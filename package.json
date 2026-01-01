@@ -1,0 +1,50 @@
+{
+  "name": "rendezvous",
+  "version": "0.1.0",
+  "description": "Private mutual matching - Find mutual interest without revealing unilateral preferences",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "rendezvous": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server/index.js",
+    "server": "node dist/server/index.js",
+    "seed": "node dist/scripts/seed.js",
+    "cli": "node dist/cli/index.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist && rm -rf data"
+  },
+  "dependencies": {
+    "@automerge/automerge": "^3.2.0",
+    "@noble/curves": "^1.7.0",
+    "@noble/hashes": "^1.6.0",
+    "better-sqlite3": "^11.6.0",
+    "commander": "^12.1.0",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "uuid": "^11.0.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.1",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.13",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}

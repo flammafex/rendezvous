@@ -1,0 +1,270 @@
+/* Theme Toggle - Celestial Sun/Moon Design */
+/* A meeting point between light and dark */
+
+.theme-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 56px;
+  height: 28px;
+  background: var(--toggle-bg);
+  border: 1px solid var(--toggle-border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+/* Starfield background for dark mode */
+.theme-toggle-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1px 1px at 10px 8px, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 35px 18px, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1px 1px at 25px 6px, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 45px 12px, rgba(255,255,255,0.2), transparent),
+    radial-gradient(1px 1px at 18px 20px, rgba(255,255,255,0.3), transparent);
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+[data-theme="light"] .theme-toggle-track::before {
+  opacity: 0;
+}
+
+/* Sky gradient for light mode */
+.theme-toggle-track::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #87ceeb 0%, #e0f4ff 100%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+[data-theme="light"] .theme-toggle-track::after {
+  opacity: 1;
+}
+
+/* The celestial orb */
+.theme-toggle-orb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c9d1d9 0%, #8b949e 50%, #6e7681 100%);
+  box-shadow:
+    var(--orb-shadow),
+    inset -2px -2px 4px rgba(0, 0, 0, 0.2),
+    inset 2px 2px 4px rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2;
+}
+
+/* Moon craters */
+.theme-toggle-orb::before {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 50%;
+  top: 5px;
+  left: 4px;
+  box-shadow:
+    6px 8px 0 1px rgba(0, 0, 0, 0.1),
+    10px 2px 0 0 rgba(0, 0, 0, 0.08);
+  transition: opacity 0.3s ease;
+}
+
+/* Sun rays container */
+.theme-toggle-orb::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 0;
+  transition: all 0.4s ease;
+}
+
+/* Light mode - Transform to sun */
+[data-theme="light"] .theme-toggle-orb {
+  left: calc(100% - 23px);
+  background: linear-gradient(135deg, #fcd34d 0%, #f59e0b 50%, #d97706 100%);
+  box-shadow:
+    var(--orb-shadow),
+    0 0 12px rgba(251, 191, 36, 0.5),
+    0 0 24px rgba(251, 191, 36, 0.3),
+    inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+    inset 2px 2px 4px rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="light"] .theme-toggle-orb::before {
+  opacity: 0;
+}
+
+/* Sun ray animation */
+[data-theme="light"] .theme-toggle-orb::after {
+  opacity: 1;
+  background:
+    conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(251, 191, 36, 0.3) 10deg,
+      transparent 20deg,
+      transparent 40deg,
+      rgba(251, 191, 36, 0.3) 50deg,
+      transparent 60deg,
+      transparent 80deg,
+      rgba(251, 191, 36, 0.3) 90deg,
+      transparent 100deg,
+      transparent 120deg,
+      rgba(251, 191, 36, 0.3) 130deg,
+      transparent 140deg,
+      transparent 160deg,
+      rgba(251, 191, 36, 0.3) 170deg,
+      transparent 180deg,
+      transparent 200deg,
+      rgba(251, 191, 36, 0.3) 210deg,
+      transparent 220deg,
+      transparent 240deg,
+      rgba(251, 191, 36, 0.3) 250deg,
+      transparent 260deg,
+      transparent 280deg,
+      rgba(251, 191, 36, 0.3) 290deg,
+      transparent 300deg,
+      transparent 320deg,
+      rgba(251, 191, 36, 0.3) 330deg,
+      transparent 340deg,
+      transparent 360deg
+    );
+  animation: sunRays 10s linear infinite;
+}
+
+@keyframes sunRays {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Hover effects */
+.theme-toggle-track:hover .theme-toggle-orb {
+  transform: scale(1.05);
+}
+
+.theme-toggle-track:active .theme-toggle-orb {
+  transform: scale(0.95);
+}
+
+/* Focus styles for accessibility */
+.theme-toggle-track:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Screen reader text */
+.theme-toggle-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Theme label */
+.theme-toggle-label {
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.theme-toggle:hover .theme-toggle-label {
+  opacity: 1;
+}
+
+/* Position in header */
+.header-actions {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Ensure header can contain absolute positioned elements */
+header {
+  position: relative;
+}
+
+/* Smooth theme transition for all elements */
+body,
+.card,
+.tab,
+.btn-primary,
+.btn-secondary,
+input,
+textarea,
+select,
+.pool-item,
+.profile-card,
+.status,
+.result-box,
+.privacy-note,
+.key-display,
+.selection-chip,
+.match-item {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+/* Adjust body background pattern for light mode */
+[data-theme="light"] body::before {
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(13, 148, 136, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(8, 145, 178, 0.03) 0%, transparent 50%);
+}
+
+/* Adjust header logo for light mode */
+[data-theme="light"] header img {
+  filter: drop-shadow(0 0 30px rgba(13, 148, 136, 0.1));
+}
+
+/* Profile card grid pattern adjustment for light mode */
+[data-theme="light"] .profile-card::before {
+  background-image:
+    linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header-actions {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .theme-toggle-label {
+    display: none;
+  }
+}

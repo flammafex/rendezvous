@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Private mutual matching - Find mutual interest without revealing unilateral preferences">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Rendezvous">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/icons/icon.svg">
+  <title>Rendezvous - Private Mutual Matching</title>
+  <!-- Modular CSS -->
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/qr-modal.css">
+  <link rel="stylesheet" href="/css/join-modal.css">
+  <link rel="stylesheet" href="/css/theme-toggle.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <img src="rendezvous.webp" alt="Rendezvous"/>
+      <p>Private mutual matching - Find mutual interest without revealing unilateral preferences</p>
+      <div class="service-status">
+        <div class="status-item">
+          <span id="freebird-status-dot" class="status-dot"></span>
+          <span id="freebird-status-text">Freebird</span>
+        </div>
+        <div class="status-item">
+          <span id="witness-status-dot" class="status-dot"></span>
+          <span id="witness-status-text">Witness</span>
+        </div>
+        <div class="status-item">
+          <span id="federation-status-dot" class="status-dot"></span>
+          <span id="federation-status-text">Federation</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="pools">Pools</button>
+      <button class="tab visitor-hidden" data-tab="browse">Browse & Select</button>
+      <button class="tab visitor-hidden" data-tab="discover">Discover Matches</button>
+      <button class="tab visitor-hidden" data-tab="keys">My Keys</button>
+    </div>
+
+    <!-- Pools Tab -->
+    <div id="pools" class="panel active">
+      <div class="card">
+        <h2>Active Pools</h2>
+        <button class="btn-secondary btn-sm mb-2" data-action="refresh-pools">Refresh</button>
+        <div id="poolList" class="pool-list"><p class="text-muted">Loading...</p></div>
+
+        <!-- Create Pool Reveal Link -->
+        <div id="createPoolReveal" class="create-pool-reveal">
+          <button id="createPoolRevealBtn" class="create-pool-reveal-btn">
+            Have an invite code? Create a pool →
+          </button>
+        </div>
+      </div>
+
+      <!-- Create Pool Form (hidden by default) -->
+      <div id="createPoolCard" class="card hidden">
+        <div class="create-pool-header">
+          <h2>Create New Pool</h2>
+          <button id="createPoolCloseBtn" class="create-pool-close">&times;</button>
+        </div>
+        <form id="createPoolForm">
+          <div class="form-group">
+            <label for="poolName">Pool Name *</label>
+            <input type="text" id="poolName" placeholder="Friday Mixer" required>
+          </div>
+          <div class="form-group">
+            <label for="poolDescription">Description</label>
+            <input type="text" id="poolDescription" placeholder="Find your matches!">
+          </div>
+          <div class="form-group">
+            <label for="revealDeadline">Deadline (hours from now) *</label>
+            <input type="number" id="revealDeadline" value="24" min="1" max="168" required>
+          </div>
+          <div class="form-group">
+            <label for="maxPreferences">Max Preferences per Person</label>
+            <input type="number" id="maxPreferences" placeholder="Unlimited" min="1">
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:0.75rem;">
+            <input type="checkbox" id="poolEphemeral" style="width:auto;">
+            <label for="poolEphemeral" style="margin:0;cursor:pointer;">
+              <strong>Ephemeral Mode</strong>
+              <span class="text-sm text-muted" style="display:block;">Auto-delete participant profiles after pool closes</span>
+            </label>
+          </div>
+          <div id="requireInviteSection" class="form-group" style="display:flex;align-items:center;gap:0.75rem;">
+            <input type="checkbox" id="poolRequiresInvite" style="width:auto;">
+            <label for="poolRequiresInvite" style="margin:0;cursor:pointer;">
+              <strong>Require Invite to Join</strong>
+              <span class="text-sm text-muted" style="display:block;">Participants must have a Freebird invite code to join this pool</span>
+            </label>
+          </div>
+          <div id="inviteCodeSection" class="form-group hidden">
+            <label for="inviteCode">Invite Code *</label>
+            <input type="text" id="inviteCode" class="input-mono" placeholder="Enter your invite code">
+            <p class="text-sm text-muted">An invite code is required to create pools on this instance.</p>
+          </div>
+          <button type="submit" class="btn-primary">Create Pool</button>
+        </form>
+        <div id="createPoolResult" class="hidden"></div>
+      </div>
+      <div id="poolDetails" class="card hidden">
+        <h2>Pool Details</h2>
+        <div id="poolDetailsContent"></div>
+      </div>
+    </div>
+
+    <!-- Browse Tab -->
+    <div id="browse" class="panel">
+      <div class="step-indicator">
+        <div class="step active" id="step1"><span class="step-number">1</span><span>Select Pool</span></div>
+        <div class="step" id="step2"><span class="step-number">2</span><span>Register</span></div>
+        <div class="step" id="step3"><span class="step-number">3</span><span>Browse</span></div>
+        <div class="step" id="step4"><span class="step-number">4</span><span>Submit</span></div>
+      </div>
+
+      <div id="browseStep1" class="browse-container">
+        <div class="card">
+          <h2>Select a Pool to Join</h2>
+          <div class="form-group">
+            <label>Choose an active pool:</label>
+            <select id="browsePoolSelect"><option value="">-- Select a pool --</option></select>
+          </div>
+          <div class="form-group">
+            <label>Or enter pool ID directly:</label>
+            <input type="text" id="browsePoolId" class="input-mono" placeholder="Pool UUID">
+          </div>
+          <div style="display:flex;gap:0.5rem;">
+            <button class="btn-primary" style="flex:1;" onclick="selectPoolForBrowse()">Continue</button>
+            <button class="btn-secondary" onclick="startQRScanner()" title="Scan QR Code">Scan QR</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="browseStep2" class="browse-container hidden">
+        <div class="card">
+          <h2>Register Your Profile</h2>
+          <p class="text-muted mb-2">Create a profile that others will see when browsing.</p>
+          <form id="registerForm">
+            <div class="form-group">
+              <label for="registerDisplayName">Display Name *</label>
+              <input type="text" id="registerDisplayName" placeholder="Your name" required>
+            </div>
+            <div class="form-group">
+              <label for="registerBio">Bio</label>
+              <textarea id="registerBio" placeholder="Tell people about yourself..." rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="registerPublicKeyInput">Public Key *</label>
+              <input type="text" id="registerPublicKeyInput" class="input-mono" placeholder="64-char hex public key" required>
+              <p class="text-sm text-muted">Enter your public key or <a href="#" onclick="fillFromSavedKey(); return false;">use last saved key</a></p>
+            </div>
+            <div class="form-group">
+              <label for="registerPrivateKeyInput">Private Key *</label>
+              <input type="password" id="registerPrivateKeyInput" class="input-mono" placeholder="64-char hex private key" required>
+              <p class="text-sm text-muted">Needed later to submit preferences (stored locally only)</p>
+            </div>
+            <button type="submit" class="btn-primary">Register & Start Browsing</button>
+          </form>
+          <button class="btn-secondary mt-2" onclick="goToBrowseStep(1)">Back</button>
+        </div>
+      </div>
+
+      <div id="browseStep3" class="browse-container hidden">
+        <div class="card">
+          <h2 id="browsePoolName">Pool</h2>
+          <p class="text-muted mb-2" id="browseProgress">0 / 0 people</p>
+        </div>
+        <div class="profile-card" id="currentProfileCard">
+          <div class="empty-state"><div class="empty-state-icon">&#128101;</div><p>Loading...</p></div>
+        </div>
+        <div class="swipe-buttons">
+          <button class="swipe-btn browse" onclick="handleBrowse('prev')" title="Previous" id="browsePrevBtn">&#8592;</button>
+          <button class="swipe-btn pass" onclick="handleSwipe('pass')" title="Skip">&#10005;</button>
+          <button class="swipe-btn like" onclick="handleSwipe('like')" title="Select">&#10003;</button>
+          <button class="swipe-btn browse" onclick="handleBrowse('next')" title="Next" id="browseNextBtn">&#8594;</button>
+        </div>
+        <div class="selections-summary">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div><span class="selections-count" id="selectionsCount">0</span> <span class="text-muted">selected</span></div>
+            <button class="btn-primary" onclick="goToBrowseStep(4)" id="submitSelectionsBtn" disabled>Submit Selections</button>
+          </div>
+          <div class="selections-list" id="selectionsList"></div>
+        </div>
+        <button class="btn-secondary mt-2" onclick="goToBrowseStep(1)">Leave Pool</button>
+      </div>
+
+      <div id="browseStep4" class="browse-container hidden">
+        <div class="card">
+          <h2>Confirm Your Selections</h2>
+          <div class="privacy-note">
+            <strong>Privacy Guarantee:</strong> Your selections are encrypted.
+            Only mutual matches will be revealed.
+          </div>
+          <p class="mb-2">You have selected <strong id="finalSelectionsCount">0</strong> people:</p>
+          <div id="finalSelectionsList" class="selections-list mb-2"></div>
+          <div class="form-group" style="background:var(--bg-input);padding:1rem;border-radius:0.5rem;border:1px solid var(--border);">
+            <label style="color:var(--accent);font-weight:500;">Contact Info (revealed only to mutual matches)</label>
+            <input type="text" id="revealContactInfo" placeholder="e.g., email@example.com or @twitter_handle" style="margin-bottom:0.5rem;">
+            <textarea id="revealMessage" rows="2" placeholder="Optional message to your matches..." style="margin-bottom:0;"></textarea>
+            <p class="text-sm text-muted mt-1">This will be encrypted and only visible to people who also selected you.</p>
+          </div>
+          <div class="form-group">
+            <label>Your Private Key</label>
+            <input type="password" id="submitPrivateKey" class="input-mono" placeholder="Enter your private key" required>
+          </div>
+          <button id="submitPrefsBtn" class="btn-success btn-lg" style="width:100%;" onclick="submitSelections()">Submit Encrypted Preferences</button>
+          <div id="submitResult" class="hidden mt-2"></div>
+          <button id="submitBackBtn" class="btn-secondary mt-2" onclick="goToBrowseStep(3)">Back</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Discover Tab -->
+    <div id="discover" class="panel">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Discover Your Matches</h2>
+          <p class="text-muted mb-2">This runs locally. The server never learns which matches you found.</p>
+          <form id="discoverForm">
+            <div class="form-group">
+              <label for="discoverPoolId">Pool ID *</label>
+              <input type="text" id="discoverPoolId" class="input-mono" placeholder="Pool UUID" required>
+            </div>
+            <div class="form-group">
+              <label for="discoverPrivateKey">Your Private Key *</label>
+              <input type="password" id="discoverPrivateKey" class="input-mono" placeholder="64-char hex" required>
+            </div>
+            <button type="submit" class="btn-success">Discover Matches</button>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Your Matches</h2>
+          <div id="matchResults"><p class="text-muted text-center">Submit form to see matches</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keys Tab -->
+    <div id="keys" class="panel">
+      <div class="card" style="background: var(--gradient-card); border-color: var(--accent);">
+        <h2>Pseudonym Rotation</h2>
+        <p class="text-muted mb-2">For maximum privacy, use a fresh keypair for each pool. This prevents correlation between your activities across different pools.</p>
+        <div class="privacy-note">
+          <strong>Privacy Best Practice:</strong> Generate a unique identity for each pool you join.
+          This way, even if someone is in multiple pools with you, they cannot link your profiles together.
+        </div>
+        <div class="form-group mt-2">
+          <label for="pseudonymPoolName">Pool Name (for labeling)</label>
+          <input type="text" id="pseudonymPoolName" placeholder="e.g., Friday Mixer, Book Club">
+        </div>
+        <button class="btn-primary" onclick="generatePseudonym()">Generate Fresh Identity for Pool</button>
+        <div id="pseudonymResult" class="hidden mt-2">
+          <div class="result-box success">
+            <p><strong>New identity created!</strong></p>
+            <div class="key-label mt-2">Public Key</div>
+            <div class="key-display" id="pseudonymPublicKey"></div>
+            <button class="btn-secondary btn-sm" onclick="copyKey('pseudonymPublicKey')">Copy</button>
+            <div class="key-label mt-2">Private Key (saved automatically)</div>
+            <div class="key-display" id="pseudonymPrivateKey"></div>
+            <button class="btn-secondary btn-sm" onclick="copyKey('pseudonymPrivateKey')">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid-2 mt-2">
+        <div class="card">
+          <h2>Generate New Keypair</h2>
+          <p class="text-muted mb-2">Generate a fresh X25519 keypair for participating in pools.</p>
+          <button class="btn-primary" onclick="generateKeypair()">Generate Keypair</button>
+          <div id="generatedKeys" class="hidden mt-2">
+            <div class="key-label">Public Key (share this)</div>
+            <div class="key-display" id="generatedPublicKey"></div>
+            <button class="btn-secondary btn-sm" onclick="copyKey('generatedPublicKey')">Copy</button>
+            <div class="key-label mt-2">Private Key (keep secret!)</div>
+            <div class="key-display" id="generatedPrivateKey"></div>
+            <button class="btn-secondary btn-sm" onclick="copyKey('generatedPrivateKey')">Copy</button>
+            <p class="text-sm text-error mt-2">Save your private key securely!</p>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Saved Keys</h2>
+          <p class="text-muted mb-2">Keys are stored in browser localStorage.</p>
+          <div id="savedKeys"><p class="text-muted">No saved keys</p></div>
+          <button class="btn-secondary btn-sm mt-2" onclick="saveCurrentKey()">Save Current Key</button>
+        </div>
+      </div>
+      <div class="card mt-2">
+        <h2>Device Sync</h2>
+        <p class="text-muted mb-2">Transfer keys between devices using encrypted QR codes. Keys never touch any server.</p>
+        <div class="privacy-note">
+          <strong>Privacy:</strong> Keys are encrypted with your passphrase before being encoded in the QR code.
+          Only someone with both the QR code and your passphrase can access your keys.
+        </div>
+        <div style="display:flex;gap:1rem;margin-top:1rem;flex-wrap:wrap;">
+          <button class="btn-primary" onclick="showExportKeysModal()">Export Keys to QR</button>
+          <button class="btn-secondary" onclick="showImportKeysModal()">Import Keys from QR</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Code Library -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+
+  <!-- QR Scanner Library (loaded async) -->
+  <script async src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+  <!-- Crypto module - loads noble.js libraries -->
+  <script type="module" src="/js/modules/crypto.js"></script>
+
+  <!-- Main application -->
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

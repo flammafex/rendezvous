@@ -1,0 +1,57 @@
+/* Layout Styles */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .tabs {
+    justify-content: center;
+  }
+
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .swipe-buttons {
+    gap: 0.75rem;
+  }
+
+  .swipe-btn {
+    width: 56px;
+    height: 56px;
+    font-size: 1.25rem;
+  }
+
+  .swipe-btn.like {
+    width: 64px;
+    height: 64px;
+    font-size: 1.5rem;
+  }
+
+  .swipe-btn.browse {
+    width: 44px;
+    height: 44px;
+    font-size: 1rem;
+  }
+
+  .step {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .step-number {
+    width: 1.5rem;
+    height: 1.5rem;
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .step span:not(.step-number) {
+    display: none;
+  }
+}

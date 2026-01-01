@@ -1,0 +1,525 @@
+/* Join Flow Modal Styles */
+
+.join-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: none;
+  z-index: 1000;
+  overflow-y: auto;
+  animation: joinModalFadeIn 0.25s ease-out;
+}
+
+.join-modal.active {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+@keyframes joinModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal Content - Fullscreen on mobile, centered card on desktop */
+.join-modal-content {
+  background: var(--bg-card);
+  width: 100%;
+  min-height: 100vh;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  animation: joinModalSlideUp 0.3s ease-out;
+}
+
+@keyframes joinModalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 640px) {
+  .join-modal-content {
+    max-width: 520px;
+    min-height: auto;
+    margin: 2rem auto;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* Modal Header */
+.join-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.join-modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.join-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  border-radius: 0.375rem;
+  transition: all 0.2s;
+}
+
+.join-modal-close:hover {
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+/* Progress Steps */
+.join-progress {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-bottom: 2rem;
+}
+
+.join-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 2rem;
+  font-size: 0.8rem;
+  color: var(--text-subtle);
+  transition: all 0.2s;
+}
+
+.join-progress-step.active {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.join-progress-step.completed {
+  color: var(--success);
+}
+
+.join-progress-number {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+}
+
+.join-progress-step.active .join-progress-number {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.join-progress-step.completed .join-progress-number {
+  background: var(--success);
+  border-color: var(--success);
+  color: white;
+}
+
+/* Step Content */
+.join-step {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+}
+
+.join-step.active {
+  display: flex;
+}
+
+/* Step 1: Identity */
+.identity-preview {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.identity-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 0.625rem;
+  background: var(--gradient-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  font-size: 2rem;
+  color: white;
+  font-weight: 600;
+}
+
+.identity-id {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+  background: var(--bg);
+  padding: 0.375rem 0.75rem;
+  border-radius: 2rem;
+  display: inline-block;
+}
+
+.identity-id-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-subtle);
+  margin-bottom: 0.25rem;
+}
+
+/* Existing Keys Section */
+.existing-keys-section {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.existing-keys-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.existing-keys-toggle:hover {
+  color: var(--text);
+}
+
+.existing-keys-list {
+  margin-top: 0.75rem;
+  display: none;
+}
+
+.existing-keys-list.expanded {
+  display: block;
+}
+
+.existing-key-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 0.5rem;
+}
+
+.existing-key-option:hover {
+  border-color: var(--accent);
+  background: var(--bg-card);
+}
+
+.existing-key-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.existing-key-label {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.existing-key-id {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-subtle);
+}
+
+/* Step 2: Browse - Reuse existing profile card styles */
+.join-browse-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.join-browse-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+}
+
+.join-browse-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+/* Compact profile card for modal */
+.join-profile-card {
+  background: var(--gradient-card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.join-profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 0.625rem;
+  background: var(--gradient-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  font-size: 2rem;
+  color: white;
+  font-weight: 600;
+}
+
+.join-profile-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+}
+
+.join-profile-bio {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.join-profile-key {
+  background: var(--bg);
+  border-radius: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--text-subtle);
+  word-break: break-all;
+}
+
+/* Compact swipe buttons */
+.join-swipe-buttons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.join-swipe-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 0.625rem;
+  border: 2px solid;
+  background: var(--bg-card);
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.join-swipe-btn.pass {
+  border-color: var(--skip);
+  color: var(--skip);
+}
+.join-swipe-btn.pass:hover {
+  background: var(--skip);
+  color: white;
+  transform: scale(1.05);
+}
+
+.join-swipe-btn.like {
+  border-color: var(--select);
+  color: var(--select);
+  width: 60px;
+  height: 60px;
+  font-size: 1.5rem;
+}
+.join-swipe-btn.like:hover {
+  background: var(--select);
+  color: white;
+  transform: scale(1.05);
+}
+
+.join-swipe-btn.nav {
+  width: 40px;
+  height: 40px;
+  border-radius: 0.375rem;
+  border-color: var(--border);
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+.join-swipe-btn.nav:hover:not(:disabled) {
+  background: var(--bg-input);
+  border-color: var(--text-subtle);
+}
+.join-swipe-btn.nav:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Browse progress indicator */
+.join-browse-progress {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+/* Selections summary (compact) */
+.join-selections {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+  padding: 1rem;
+  margin-top: auto;
+}
+
+.join-selections-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.join-selections-count {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.join-selections-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+/* Step 3: Confirm */
+.join-confirm-selections {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.join-confirm-selections h4 {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.join-confirm-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Footer Actions */
+.join-modal-footer {
+  margin-top: auto;
+  padding-top: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.join-modal-footer .btn-primary,
+.join-modal-footer .btn-success {
+  flex: 1;
+}
+
+.join-modal-footer .btn-secondary {
+  min-width: 80px;
+}
+
+/* Loading state */
+.join-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: var(--text-muted);
+}
+
+.join-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: joinSpin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes joinSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Success state */
+.join-success {
+  text-align: center;
+  padding: 2rem;
+}
+
+.join-success-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.join-success h3 {
+  color: var(--success);
+  margin-bottom: 0.5rem;
+}
+
+/* Tab visibility for visitors */
+.tab.visitor-hidden {
+  display: none;
+}
+
+.tab.visitor-hidden.unlocked {
+  display: block;
+}
