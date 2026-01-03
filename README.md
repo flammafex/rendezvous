@@ -1,4 +1,4 @@
-# 🎭 Rendezvous
+# 🤝 Rendezvous
 
 Two parties can discover if they mutually selected each other without revealing:
 - Who the person selected (if not mutual)
