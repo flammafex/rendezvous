@@ -291,14 +291,12 @@ export type VoterGate =
 
 /** Freebird eligibility proof (unlinkable token) */
 export interface FreebirdProof {
-  /** Base64-encoded token value */
+  /** Base64-encoded V3 redemption token (self-contained) */
   tokenValue: string;
   /** Token expiration timestamp (ms) */
   expiration: number;
   /** Issuer identifier */
   issuerId: string;
-  /** Epoch for key rotation (day-based) */
-  epoch?: number;
 }
 
 /** Witness timestamp attestation */

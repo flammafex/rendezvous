@@ -46,7 +46,7 @@ export class HttpFreebirdAdapter implements FreebirdAdapter {
   /**
    * Verify a VOPRF token.
    *
-   * @param proof - Contains token_b64, issuer_id, expiration, and epoch
+   * @param proof - Contains token_b64 (V3 self-contained token)
    * @returns True if token is valid and not replayed
    */
   async verify(proof: FreebirdProof): Promise<boolean> {
@@ -58,15 +58,12 @@ export class HttpFreebirdAdapter implements FreebirdAdapter {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      // Freebird API expects: token_b64, issuer_id, exp, epoch
+      // V3 tokens are self-contained — verifier only needs the token itself
       const response = await fetch(`${this.verifierUrl}/v1/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token_b64: proof.tokenValue,
-          issuer_id: proof.issuerId,
-          exp: Math.floor(proof.expiration / 1000), // Convert ms to seconds
-          epoch: proof.epoch ?? this.currentEpoch(),
         }),
         signal: controller.signal,
       });
@@ -78,7 +75,7 @@ export class HttpFreebirdAdapter implements FreebirdAdapter {
         if (status === 401) {
           console.error('Freebird: token verification failed or replayed');
         } else if (status === 400) {
-          console.error('Freebird: invalid token format or epoch');
+          console.error('Freebird: invalid token format');
         }
         return false;
       }
@@ -101,31 +98,19 @@ export class HttpFreebirdAdapter implements FreebirdAdapter {
    * Verify a raw invite code (base64 token string).
    *
    * This is a convenience method that constructs a FreebirdProof from
-   * a raw token string using default issuer and current epoch.
+   * a raw token string using default issuer.
    *
-   * @param inviteCode - Base64-encoded VOPRF token
+   * @param inviteCode - Base64-encoded V3 redemption token
    * @param issuerId - Issuer ID (default: 'default')
    * @returns True if token is valid
    */
   async verifyInviteCode(inviteCode: string, issuerId: string = 'default'): Promise<boolean> {
-    // Construct a FreebirdProof from the raw token
-    // Tokens are typically valid for 24 hours from issue
     const proof = {
       tokenValue: inviteCode,
       issuerId,
       expiration: Date.now() + 86400000, // Assume valid for 24h
-      epoch: this.currentEpoch(),
     };
 
     return this.verify(proof);
-  }
-
-  /**
-   * Calculate current epoch (day-based by default).
-   * Epochs are used for key rotation and token scoping.
-   */
-  private currentEpoch(): number {
-    const epochDurationSec = 86400; // 1 day
-    return Math.floor(Date.now() / 1000 / epochDurationSec);
   }
 }
