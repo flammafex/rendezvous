@@ -6,6 +6,7 @@
 export const browseState = {
   poolId: null,
   poolName: null,
+  requiresInviteToJoin: false,
   participants: [],
   currentIndex: 0,
   selections: [],
@@ -57,6 +58,7 @@ export function setInviteRequired(required) {
 export function resetBrowseState() {
   browseState.poolId = null;
   browseState.poolName = null;
+  browseState.requiresInviteToJoin = false;
   browseState.participants = [];
   browseState.currentIndex = 0;
   browseState.selections = [];

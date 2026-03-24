@@ -39,6 +39,7 @@ async function discoverMatches(poolId, privateKey, resultElement, retryCount = 0
       resultElement.innerHTML = '<p class="text-error">No saved selections for this pool</p>';
       return;
     }
+    const ownRevealDataByToken = stored.ownRevealDataByToken || {};
 
     // Find which of our selections resulted in mutual matches
     const matchedSelections = [];
@@ -55,11 +56,24 @@ async function discoverMatches(poolId, privateKey, resultElement, retryCount = 0
       try {
         const revealResult = await fetchRevealData(poolId);
         for (const match of matchedSelections) {
-          const encryptedData = revealResult.revealData[match.matchToken];
-          if (encryptedData) {
-            const decrypted = await decryptRevealData(encryptedData, match.matchToken);
-            if (decrypted) {
-              revealDataMap[match.publicKey] = decrypted;
+          const revealEntries = revealResult?.revealData?.[match.matchToken];
+          const encryptedEntries = Array.isArray(revealEntries)
+            ? revealEntries
+            : (typeof revealEntries === 'string' ? [revealEntries] : []);
+
+          if (encryptedEntries.length > 0) {
+            const ownEncrypted = ownRevealDataByToken[match.matchToken];
+            for (const encryptedData of encryptedEntries) {
+              // Exclude our own ciphertext so we only display counterpart contact data.
+              if (ownEncrypted && encryptedData === ownEncrypted) {
+                continue;
+              }
+
+              const decrypted = await decryptRevealData(encryptedData, match.matchToken);
+              if (decrypted) {
+                revealDataMap[match.publicKey] = decrypted;
+                break;
+              }
             }
           }
         }
@@ -97,7 +111,8 @@ async function discoverMatches(poolId, privateKey, resultElement, retryCount = 0
       '</div>';
   } catch (e) {
     // Check if this is a "still computing" error
-    if (e.message.includes('not be closed') && retryCount < 12) {
+    const computingError = /not be closed|must be closed|being computed|not closed/i.test(e.message);
+    if (computingError && retryCount < 12) {
       // Show countdown and auto-retry
       let countdown = 10;
       resultElement.innerHTML = '<div class="text-center">' +

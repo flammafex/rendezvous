@@ -30,3 +30,6 @@ coverage/
 # Private keys (never commit!)
 *.key
 *_sk.bin
+
+# Claude Code
+.claude/

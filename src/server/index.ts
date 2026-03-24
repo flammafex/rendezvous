@@ -719,6 +719,33 @@ app.post('/api/pools/:id/reveal', (req: Request, res: Response, next: NextFuncti
   }
 });
 
+// Get match results (legacy compatibility endpoint used by web UI discover flow)
+app.get('/api/pools/:id/matches', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const pool = rv.getPool(req.params.id);
+    if (!pool) {
+      res.status(404).json({ error: 'Pool not found' });
+      return;
+    }
+
+    // Match computation only occurs once the pool is closed
+    if (pool.status !== 'closed') {
+      res.status(400).json({ error: 'Pool must be closed before querying matches' });
+      return;
+    }
+
+    const result = rv.getMatchResult(req.params.id);
+    if (!result) {
+      res.status(400).json({ error: 'Pool may not be closed yet. Matches are being computed.' });
+      return;
+    }
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Check if submitted
 app.get('/api/pools/:id/submitted/:nullifier', (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -795,12 +822,46 @@ app.get('/api/pools/:id/matches/reveal-data', (req: Request, res: Response, next
       return;
     }
 
-    // Get all preferences for this pool and build a map of matchToken -> encryptedReveal
+    // Get all preferences for this pool and build a map of
+    // matchToken -> encryptedReveal[] (one entry per matched participant)
+    const preferences = rv.getPreferencesByPool(req.params.id);
+    const revealDataMap: Record<string, string[]> = {};
+
+    for (const token of result.matchedTokens) {
+      // Find preferences with this token and get their encrypted reveal data
+      const matchingPrefs = preferences.filter(p => p.matchToken === token && p.encryptedReveal);
+      const encryptedEntries = matchingPrefs
+        .map(pref => pref.encryptedReveal)
+        .filter((entry): entry is string => Boolean(entry));
+
+      if (encryptedEntries.length > 0) {
+        revealDataMap[token] = encryptedEntries;
+      }
+    }
+
+    res.json({
+      matchedTokens: result.matchedTokens,
+      revealData: revealDataMap,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Deprecated legacy reveal-data format (kept for compatibility if needed by older clients)
+app.get('/api/pools/:id/matches/reveal-data-legacy', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = rv.getMatchResult(req.params.id);
+
+    if (!result) {
+      res.status(404).json({ error: 'No match results available. Pool may not be closed.' });
+      return;
+    }
+
     const preferences = rv.getPreferencesByPool(req.params.id);
     const revealDataMap: Record<string, string | null> = {};
 
     for (const token of result.matchedTokens) {
-      // Find preferences with this token and get their encrypted reveal data
       const matchingPrefs = preferences.filter(p => p.matchToken === token && p.encryptedReveal);
       // There could be up to 2 preferences with this token (one from each party)
       for (const pref of matchingPrefs) {

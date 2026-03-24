@@ -4,7 +4,7 @@
  */
 
 import { fetchPool, fetchParticipants, registerParticipant, getParticipantByKey, submitPreferences } from './api.js';
-import { getPublicKey, deriveMatchToken, deriveNullifier, encryptRevealData, generateDecoyTokens, shuffleArray } from './crypto.js';
+import { getPublicKey, deriveMatchToken, deriveNullifier, encryptRevealData } from './crypto.js';
 import { escapeHtml, goToBrowseStep } from './ui.js';
 import { browseState, getSavedKeys, getDiscoveries, saveDiscoveries } from './state.js';
 
@@ -38,13 +38,28 @@ export async function selectPoolForBrowse() {
     const pool = await fetchPool(poolId);
     browseState.poolId = poolId;
     browseState.poolName = pool.name;
+    browseState.requiresInviteToJoin = pool.requiresInviteToJoin === true;
     // Clear any previous key inputs
     document.getElementById('registerPublicKeyInput').value = '';
     document.getElementById('registerPrivateKeyInput').value = '';
+    const inviteInput = document.getElementById('submitInviteCode');
+    if (inviteInput) {
+      inviteInput.value = '';
+    }
+    updateBrowseInviteSection();
     goToBrowseStep(2);
   } catch (e) {
     alert(e.message);
   }
+}
+
+/**
+ * Update invite-code section visibility for browse submit step
+ */
+function updateBrowseInviteSection() {
+  const inviteSection = document.getElementById('browseInviteCodeSection');
+  if (!inviteSection) return;
+  inviteSection.classList.toggle('hidden', !browseState.requiresInviteToJoin);
 }
 
 /**
@@ -174,10 +189,12 @@ export function handleSwipe(action) {
 
   if (action === 'like') {
     const participant = browseState.participants[browseState.currentIndex];
-    browseState.selections.push({
-      publicKey: participant.publicKey,
-      displayName: participant.displayName
-    });
+    if (!browseState.selections.find(s => s.publicKey === participant.publicKey)) {
+      browseState.selections.push({
+        publicKey: participant.publicKey,
+        displayName: participant.displayName
+      });
+    }
   }
 
   browseState.currentIndex++;
@@ -238,10 +255,20 @@ export async function submitSelections() {
     const contactInfo = document.getElementById('revealContactInfo').value.trim();
     const revealMessage = document.getElementById('revealMessage').value.trim();
     const revealContent = { contact: contactInfo, message: revealMessage };
+    const inviteCode = document.getElementById('submitInviteCode')?.value.trim() || '';
+
+    if (browseState.requiresInviteToJoin && !inviteCode) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Encrypted Preferences';
+      el.innerHTML = '<div class="result-box error">Invite code is required for this pool</div>';
+      el.classList.remove('hidden');
+      return;
+    }
 
     // Generate real match tokens and encrypt reveal data for each
     const realTokens = [];
     const revealData = [];
+    const ownRevealDataByToken = {};
     for (const selection of browseState.selections) {
       const token = deriveMatchToken(privateKey, selection.publicKey, browseState.poolId);
       realTokens.push(token);
@@ -249,31 +276,35 @@ export async function submitSelections() {
       if (contactInfo || revealMessage) {
         const encrypted = await encryptRevealData(revealContent, token);
         revealData.push({ matchToken: token, encryptedReveal: encrypted });
+        ownRevealDataByToken[token] = encrypted;
       }
     }
 
-    // Privacy enhancement: Add decoy tokens to hide true selection count
-    const decoyCount = 3 + Math.floor(Math.random() * 6);
-    const decoyTokens = generateDecoyTokens(decoyCount);
-
-    // Shuffle real and decoy tokens together
-    const allTokens = shuffleArray([...realTokens, ...decoyTokens]);
-
-    await submitPreferences(browseState.poolId, {
-      matchTokens: allTokens,
+    const submissionData = {
+      matchTokens: realTokens,
       nullifier: deriveNullifier(privateKey, browseState.poolId),
       revealData: revealData.length ? revealData : undefined
-    });
+    };
+
+    if (browseState.requiresInviteToJoin) {
+      submissionData.inviteCode = inviteCode;
+    }
+
+    await submitPreferences(browseState.poolId, submissionData);
 
     el.innerHTML = '<div class="result-box success">' +
       '<strong>Submitted!</strong> Check Discover tab after pool closes.<br>' +
-      '<span class="text-sm text-muted">' + decoyCount + ' decoy tokens added for privacy.' +
-      (contactInfo ? ' Contact info encrypted for matches.' : '') + '</span></div>';
+      '<span class="text-sm text-muted">' +
+      (contactInfo || revealMessage ? 'Contact info encrypted for matches.' : 'Submission accepted.') +
+      '</span></div>';
     el.classList.remove('hidden');
 
     // Save discoveries for later
     const discoveries = getDiscoveries();
-    discoveries[browseState.poolId] = { selections: browseState.selections };
+    discoveries[browseState.poolId] = {
+      selections: browseState.selections,
+      ownRevealDataByToken
+    };
     saveDiscoveries(discoveries);
 
     // Success - keep button disabled and hide back button to prevent resubmission

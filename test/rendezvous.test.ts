@@ -155,6 +155,27 @@ describe('Rendezvous Integration', () => {
       }).toThrow(RendezvousError);
     });
 
+    it('should allow submitting zero selections (server-side decoy padding)', () => {
+      const creator = generateKeypair();
+      const participant = generateKeypair();
+
+      const pool = createTestPool(rv, 'Zero Selection Pool', {
+        creatorPublicKey: creator.publicKey,
+      });
+
+      const nullifier = deriveNullifier(participant.privateKey, pool.id);
+
+      const result = rv.submitPreferences({
+        poolId: pool.id,
+        matchTokens: [],
+        nullifier,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.phase).toBe('reveal');
+      expect(result.preferenceIds.length).toBe(0);
+    });
+
     it('should enforce preference limits', () => {
       const creator = generateKeypair();
       const participant = generateKeypair();

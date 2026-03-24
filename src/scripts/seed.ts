@@ -169,10 +169,10 @@ for (const poolConfig of SEED_POOLS) {
     description: poolConfig.description,
     creatorPublicKey: creatorKeypair.publicKey,
     creatorSigningKey: signingKeypair.signingPublicKey,
-    revealDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+    revealDeadline: new Date(Date.now() + 3 * 60 * 1000), // 3 minutes (quick testing)
     maxPreferencesPerParticipant: 20,
     eligibilityGate: { type: 'open' },
-    requiresInviteToJoin: true,
+    requiresInviteToJoin: false,
   });
 
   createdPools.push({ id: pool.id, name: pool.name, emoji: poolConfig.emoji });

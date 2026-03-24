@@ -122,8 +122,7 @@ export async function showPoolDetails(id) {
     const isOwner = isPoolOwner(id);
 
     contentContainer.innerHTML =
-      '<p><strong>ID:</strong> <code>' + id + '</code> ' +
-      '<button class="btn-secondary btn-sm" data-copy="' + id + '">Copy</button></p>' +
+      '<p><strong>ID:</strong> <code>' + escapeHtml(id) + '</code> <span id="poolIdCopyAction"></span></p>' +
       '<p><strong>Status:</strong> <span class="status status-' + pool.phase.currentPhase + '">' +
       pool.phase.currentPhase + '</span>' +
       (isOwner ? ' <span class="status" style="background:var(--accent);font-size:0.65rem;">OWNER</span>' : '') +
@@ -138,33 +137,47 @@ export async function showPoolDetails(id) {
         ? '<div class="match-result"><div class="match-count">' +
           pool.matchResult.matchedTokens.length + '</div><div class="match-label">Matches</div></div>'
         : '') +
-      '<div class="mt-2">' +
-      (pool.phase.currentPhase !== 'closed'
-        ? '<button class="btn-primary" data-action="join" data-pool-id="' + id + '" data-pool-name="' + escapeHtml(poolName) + '">Join</button> '
-        : '') +
-      '<button class="btn-secondary" data-action="share" data-pool-id="' + id + '" data-pool-name="' +
-      escapeHtml(poolName) + '">Share QR</button> ' +
-      (pool.phase.currentPhase !== 'closed' && isOwner
-        ? '<button class="btn-warning" data-action="close" data-pool-id="' + id + '">Close</button>'
-        : '') +
-      '</div>';
+      '<div id="poolDetailsActions" class="mt-2"></div>';
 
     // Add event handlers
-    contentContainer.querySelectorAll('[data-copy]').forEach(btn => {
-      btn.addEventListener('click', () => copyText(btn.dataset.copy));
-    });
+    const copyAction = contentContainer.querySelector('#poolIdCopyAction');
+    if (copyAction) {
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'btn-secondary btn-sm';
+      copyBtn.textContent = 'Copy';
+      copyBtn.addEventListener('click', () => copyText(id));
+      copyAction.appendChild(copyBtn);
+    }
 
-    contentContainer.querySelectorAll('[data-action="join"]').forEach(btn => {
-      btn.addEventListener('click', () => joinPool(btn.dataset.poolId, btn.dataset.poolName));
-    });
+    const actions = contentContainer.querySelector('#poolDetailsActions');
+    if (actions) {
+      if (pool.phase.currentPhase !== 'closed') {
+        const joinBtn = document.createElement('button');
+        joinBtn.className = 'btn-primary';
+        joinBtn.textContent = 'Join';
+        joinBtn.dataset.poolId = id;
+        joinBtn.addEventListener('click', () => joinPool(id, poolName));
+        actions.appendChild(joinBtn);
+      }
 
-    contentContainer.querySelectorAll('[data-action="share"]').forEach(btn => {
-      btn.addEventListener('click', () => generatePoolQR(btn.dataset.poolId, btn.dataset.poolName));
-    });
+      const shareBtn = document.createElement('button');
+      shareBtn.className = 'btn-secondary';
+      shareBtn.textContent = 'Share QR';
+      shareBtn.style.marginLeft = '0.5rem';
+      shareBtn.dataset.poolId = id;
+      shareBtn.addEventListener('click', () => generatePoolQR(id, poolName));
+      actions.appendChild(shareBtn);
 
-    contentContainer.querySelectorAll('[data-action="close"]').forEach(btn => {
-      btn.addEventListener('click', () => closePool(btn.dataset.poolId));
-    });
+      if (pool.phase.currentPhase !== 'closed' && isOwner) {
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'btn-warning';
+        closeBtn.textContent = 'Close';
+        closeBtn.style.marginLeft = '0.5rem';
+        closeBtn.dataset.poolId = id;
+        closeBtn.addEventListener('click', () => closePool(id));
+        actions.appendChild(closeBtn);
+      }
+    }
   } catch (e) {
     contentContainer.innerHTML = '<p class="text-error">' + e.message + '</p>';
   }

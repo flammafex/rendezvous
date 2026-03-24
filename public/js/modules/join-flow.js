@@ -4,7 +4,7 @@
  */
 
 import { fetchPool, fetchParticipants, registerParticipant, getParticipantByKey, submitPreferences } from './api.js';
-import { generateKeypair, getPublicKey, deriveMatchToken, deriveNullifier, encryptRevealData, generateDecoyTokens, shuffleArray } from './crypto.js';
+import { generateKeypair, deriveMatchToken, deriveNullifier, encryptRevealData } from './crypto.js';
 import { escapeHtml } from './ui.js';
 import { getSavedKeys, saveKeys, markParticipation, hasParticipated, getDiscoveries, saveDiscoveries } from './state.js';
 
@@ -585,22 +585,19 @@ async function handleJoinSubmit() {
     // Generate real match tokens and encrypt reveal data
     const realTokens = [];
     const revealData = [];
+    const ownRevealDataByToken = {};
     for (const selection of joinState.selections) {
       const token = deriveMatchToken(joinState.privateKey, selection.publicKey, joinState.poolId);
       realTokens.push(token);
       if (contactInfo || revealMessage) {
         const encrypted = await encryptRevealData(revealContent, token);
         revealData.push({ matchToken: token, encryptedReveal: encrypted });
+        ownRevealDataByToken[token] = encrypted;
       }
     }
 
-    // Add decoy tokens for privacy
-    const decoyCount = 3 + Math.floor(Math.random() * 6);
-    const decoyTokens = generateDecoyTokens(decoyCount);
-    const allTokens = shuffleArray([...realTokens, ...decoyTokens]);
-
     const submissionData = {
-      matchTokens: allTokens,
+      matchTokens: realTokens,
       nullifier: deriveNullifier(joinState.privateKey, joinState.poolId),
       revealData: revealData.length ? revealData : undefined
     };
@@ -617,7 +614,10 @@ async function handleJoinSubmit() {
 
     // Save discoveries for later
     const discoveries = getDiscoveries();
-    discoveries[joinState.poolId] = { selections: joinState.selections };
+    discoveries[joinState.poolId] = {
+      selections: joinState.selections,
+      ownRevealDataByToken
+    };
     saveDiscoveries(discoveries);
 
     // Show success

@@ -167,8 +167,8 @@ export class SubmissionManager {
     }
 
     // Validate tokens/commitments
-    if (!request.matchTokens || request.matchTokens.length === 0) {
-      throw new RendezvousError(RendezvousErrorCode.INVALID_INPUT, 'At least one preference required');
+    if (!request.matchTokens) {
+      throw new RendezvousError(RendezvousErrorCode.INVALID_INPUT, 'matchTokens is required');
     }
 
     // Check preference limit
