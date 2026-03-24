@@ -25,6 +25,7 @@
     "clean": "rm -rf dist && rm -rf data"
   },
   "dependencies": {
+    "matchlock": "file:../matchlock",
     "@automerge/automerge": "^3.2.0",
     "@noble/curves": "^1.7.0",
     "@noble/hashes": "^1.6.0",

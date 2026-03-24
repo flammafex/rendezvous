@@ -7,17 +7,8 @@
 // Basic Types
 // ============================================================================
 
-/** Hex-encoded public key (64 chars for X25519) */
-export type PublicKey = string;
-
-/** Hex-encoded private key (64 chars for X25519) */
-export type PrivateKey = string;
-
-/** Hex-encoded match token (64 chars SHA-256) */
-export type MatchToken = string;
-
-/** Hex-encoded commitment hash (64 chars SHA-256) */
-export type CommitHash = string;
+import type { PublicKey, PrivateKey, MatchToken, CommitHash } from 'matchlock';
+export type { PublicKey, PrivateKey, MatchToken, CommitHash };
 
 /** Pool status throughout its lifecycle */
 export type PoolStatus = 'open' | 'commit' | 'reveal' | 'closed';
