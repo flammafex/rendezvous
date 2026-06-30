@@ -5,7 +5,7 @@
 
 import { fetchPool, fetchParticipants, registerParticipant, getParticipantByKey, submitPreferences } from './api.js';
 import { getPublicKey, deriveMatchToken, deriveNullifier, encryptRevealData } from './crypto.js';
-import { escapeHtml, goToBrowseStep } from './ui.js';
+import { escapeHtml, goToBrowseStep, showToast } from './ui.js';
 import { browseState, getSavedKeys, getDiscoveries, saveDiscoveries } from './state.js';
 
 /**
@@ -18,7 +18,7 @@ export function fillFromSavedKey() {
     document.getElementById('registerPublicKeyInput').value = lastKey.publicKey;
     document.getElementById('registerPrivateKeyInput').value = lastKey.privateKey;
   } else {
-    alert('No saved keys! Generate one in the Keys tab first.');
+    showToast('No saved keys. Generate one in the Keys tab first.', 'info');
   }
 }
 
@@ -30,7 +30,7 @@ export async function selectPoolForBrowse() {
     document.getElementById('browsePoolSelect').value;
 
   if (!poolId) {
-    alert('Select a pool');
+    showToast('Select a pool first', 'info');
     return;
   }
 
@@ -49,7 +49,7 @@ export async function selectPoolForBrowse() {
     updateBrowseInviteSection();
     goToBrowseStep(2);
   } catch (e) {
-    alert(e.message);
+    showToast(e.message, 'error');
   }
 }
 
@@ -73,7 +73,7 @@ export async function handleRegister(e) {
   const privateKey = document.getElementById('registerPrivateKeyInput').value.trim();
 
   if (publicKey.length !== 64 || privateKey.length !== 64) {
-    alert('Keys must be 64 hex characters');
+    showToast('Keys must be 64 hex characters', 'error');
     return;
   }
 
@@ -81,11 +81,11 @@ export async function handleRegister(e) {
   try {
     const derivedPubKey = getPublicKey(privateKey);
     if (derivedPubKey !== publicKey) {
-      alert('Public key does not match private key!');
+      showToast('Public key does not match private key', 'error');
       return;
     }
   } catch (err) {
-    alert('Invalid private key');
+    showToast('Invalid private key', 'error');
     return;
   }
 
@@ -108,7 +108,7 @@ export async function handleRegister(e) {
     await loadParticipantsForBrowse();
     goToBrowseStep(3);
   } catch (e) {
-    alert(e.message);
+    showToast(e.message, 'error');
   }
 }
 

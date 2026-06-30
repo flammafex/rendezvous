@@ -1078,3 +1078,148 @@ body.offline::before {
   .dh-parties { grid-template-columns: 1fr; }
   .privacy-grid { grid-template-columns: 1fr; }
 }
+
+/* === Toasts === */
+
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 0.5rem;
+  pointer-events: none;
+  max-width: calc(100vw - 2rem);
+}
+
+.toast {
+  pointer-events: auto;
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-subtle);
+  border-radius: 0.5rem;
+  padding: 0.7rem 1rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  box-shadow: var(--shadow-md);
+  max-width: 24rem;
+  min-width: 12rem;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  word-break: break-word;
+}
+
+.toast.toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast.toast-leaving {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.toast-success {
+  border-left-color: var(--success);
+}
+
+.toast-error {
+  border-left-color: var(--error);
+}
+
+.toast-info {
+  border-left-color: var(--accent);
+}
+
+/* === Confirmation modal === */
+
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.confirm-modal.confirm-modal-visible {
+  opacity: 1;
+}
+
+.confirm-modal.confirm-modal-leaving {
+  opacity: 0;
+}
+
+.confirm-modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 26rem;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(8px) scale(0.98);
+  transition: transform 0.2s ease;
+}
+
+.confirm-modal.confirm-modal-visible .confirm-modal-card {
+  transform: translateY(0) scale(1);
+}
+
+.confirm-modal-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+.confirm-modal-body {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+
+.confirm-modal-body strong {
+  color: var(--text);
+}
+
+.confirm-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.confirm-modal-actions .btn-secondary {
+  min-width: 80px;
+}
+
+.confirm-modal-actions .btn-danger,
+.confirm-modal-actions .btn-primary {
+  min-width: 120px;
+}
+
+/* === M1: Card animation fix === */
+/* The legacy .card { animation: fadeIn ... } rule re-fires on every tab switch
+   and innerHTML rebuild (saved keys, pool list, match results). Scope the
+   entrance animation to first paint only by removing it from .card and applying
+   it to a dedicated one-shot class instead. */
+.card {
+  animation: none;
+}
+
+.card.card-enter {
+  animation: fadeIn 0.3s ease-out;
+}

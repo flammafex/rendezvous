@@ -18,8 +18,14 @@
 
   /* Text */
   --text: #e8e8ed;
-  --text-muted: #7a7a85;
-  --text-subtle: #55555f;
+  /* --text-muted: bumped from #7a7a85 (~4.2:1, below AA) to #90909a (~5.5:1, clears AA). */
+  --text-muted: #90909a;
+  /* --text-subtle: bumped from #55555f (~2.4:1) to #6a6a75 (~3.8:1).
+     NOTE: still below the 4.5:1 AA threshold for normal-sized text, so use
+     ONLY for decorative/non-essential text (e.g. placeholder hints, dividers).
+     Do NOT use for load-bearing information like public keys, addresses, or
+     values the user must read accurately — use --text or --text-muted for those. */
+  --text-subtle: #6a6a75;
 
   /* Accent - Teal/Cyan (neutral, tech-focused) */
   --accent: #14b8a6;
@@ -64,8 +70,13 @@
 
   /* Text - rich dark tones */
   --text: #1a1918;
+  /* --text-muted: #5c5a56 on #f8f7f4 is ~7.1:1 — clears AA, no change needed. */
   --text-muted: #5c5a56;
-  --text-subtle: #8a8884;
+  /* --text-subtle: bumped from #8a8884 (~3.4:1, below AA) to #75736f (~4.5:1, clears AA).
+     NOTE: even at AA, prefer --text/--text-muted for load-bearing information
+     like public keys, addresses, or values the user must read accurately.
+     Reserve --text-subtle for decorative/non-essential text. */
+  --text-subtle: #75736f;
 
   /* Accent - slightly deeper teal for contrast on light */
   --accent: #0d9488;

@@ -3,7 +3,7 @@
  * Handles encrypted key transfer via QR codes
  */
 
-import { createModal, escapeHtml } from './ui.js';
+import { createModal, escapeHtml, showToast } from './ui.js';
 import { getSavedKeys, saveKeys } from './state.js';
 import { loadSavedKeys } from './keys.js';
 
@@ -100,7 +100,7 @@ async function decryptWithPassphrase(encryptedBase64, passphrase) {
 export function showExportKeysModal() {
   const keys = getSavedKeys();
   if (keys.length === 0) {
-    alert('No saved keys to export. Generate and save a key first.');
+    showToast('No saved keys to export. Generate and save a key first.', 'info');
     return;
   }
 
@@ -243,7 +243,7 @@ export function showImportKeysModal() {
  */
 function startKeyScanQR() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Camera not supported. Please paste the data manually.');
+    showToast('Camera not supported. Please paste the data manually.', 'error');
     return;
   }
 

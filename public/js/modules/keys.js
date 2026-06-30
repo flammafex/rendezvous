@@ -3,7 +3,7 @@
  */
 
 import { generateKeypair } from './crypto.js';
-import { escapeHtml, copyText } from './ui.js';
+import { escapeHtml, copyText, showToast, showConfirm } from './ui.js';
 import { getCurrentKeypair, setCurrentKeypair, getSavedKeys, saveKeys } from './state.js';
 
 /**
@@ -24,7 +24,7 @@ export function handleGenerateKeypair() {
 export function saveCurrentKey() {
   const keypair = getCurrentKeypair();
   if (!keypair) {
-    alert('Generate first!');
+    showToast('Generate a keypair first', 'info');
     return;
   }
 
@@ -35,7 +35,7 @@ export function saveCurrentKey() {
   });
   saveKeys(keys);
   loadSavedKeys();
-  alert('Saved!');
+  showToast('Key saved', 'success');
 }
 
 /**
@@ -43,12 +43,24 @@ export function saveCurrentKey() {
  * @param {number} index - Key index
  */
 export function deleteKey(index) {
-  if (!confirm('Delete?')) return;
-
   const keys = getSavedKeys();
-  keys.splice(index, 1);
-  saveKeys(keys);
-  loadSavedKeys();
+  const key = keys[index];
+  const label = key && (key.poolLabel || ('Key ' + (index + 1)));
+
+  showConfirm(
+    'Delete saved key?',
+    'This will permanently remove <strong>' + escapeHtml(label) + '</strong> from this device. ' +
+    'If you have not backed up the private key elsewhere, you will lose access to any pools ' +
+    'that use this identity.',
+    'Delete key',
+    () => {
+      keys.splice(index, 1);
+      saveKeys(keys);
+      loadSavedKeys();
+      showToast('Key deleted', 'success');
+    },
+    { danger: true }
+  );
 }
 
 /**

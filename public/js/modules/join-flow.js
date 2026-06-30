@@ -5,7 +5,7 @@
 
 import { fetchPool, fetchParticipants, registerParticipant, getParticipantByKey, submitPreferences } from './api.js';
 import { generateKeypair, deriveMatchToken, deriveNullifier, encryptRevealData } from './crypto.js';
-import { escapeHtml } from './ui.js';
+import { escapeHtml, showToast, showConfirm } from './ui.js';
 import { getSavedKeys, saveKeys, markParticipation, hasParticipated, getDiscoveries, saveDiscoveries } from './state.js';
 
 // Join flow state
@@ -197,8 +197,16 @@ function createJoinModal() {
 function attachJoinModalListeners() {
   // Close button
   document.getElementById('joinModalClose').addEventListener('click', () => {
-    if (joinState.currentStep === 1 || confirm('Are you sure? Your progress will be lost.')) {
+    if (joinState.currentStep === 1) {
       closeJoinModal();
+    } else {
+      showConfirm(
+        'Leave this pool?',
+        'Your progress in the join flow will be lost. You can always rejoin later.',
+        'Leave pool',
+        () => closeJoinModal(),
+        { danger: true }
+      );
     }
   });
 
@@ -232,8 +240,16 @@ function attachJoinModalListeners() {
   // Close on overlay click
   document.getElementById('joinModal').addEventListener('click', (e) => {
     if (e.target.id === 'joinModal') {
-      if (joinState.currentStep === 1 || confirm('Are you sure? Your progress will be lost.')) {
+      if (joinState.currentStep === 1) {
         closeJoinModal();
+      } else {
+        showConfirm(
+          'Leave this pool?',
+          'Your progress in the join flow will be lost. You can always rejoin later.',
+          'Leave pool',
+          () => closeJoinModal(),
+          { danger: true }
+        );
       }
     }
   });
@@ -400,7 +416,7 @@ function goToJoinStep(step) {
 async function handleStep1Continue() {
   const displayName = document.getElementById('joinDisplayName').value.trim();
   if (!displayName) {
-    alert('Please enter a display name');
+    showToast('Please enter a display name', 'info');
     return;
   }
 
@@ -408,7 +424,7 @@ async function handleStep1Continue() {
   if (joinState.requiresInviteToJoin) {
     const inviteCode = document.getElementById('joinInviteCode').value.trim();
     if (!inviteCode) {
-      alert('An invite code is required to join this pool');
+      showToast('An invite code is required to join this pool', 'info');
       return;
     }
     joinState.inviteCode = inviteCode;
@@ -457,7 +473,7 @@ async function handleStep1Continue() {
   } catch (e) {
     document.getElementById('joinContinueStep1').disabled = false;
     document.getElementById('joinContinueStep1').textContent = 'Continue';
-    alert(e.message);
+    showToast(e.message, 'error');
   }
 }
 

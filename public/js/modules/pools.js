@@ -4,7 +4,7 @@
 
 import { fetchPools, fetchPool, fetchParticipants, createPool, closePool as apiClosePool } from './api.js';
 import { generateKeypair, generateSigningKeypair, createSignedRequest } from './crypto.js';
-import { escapeHtml, formatTime, copyText } from './ui.js';
+import { escapeHtml, formatTime, copyText, showToast, showConfirm } from './ui.js';
 import { getOwnedPool, saveOwnedPool, isPoolOwner, getFreebirdStatus, requiresInviteCode } from './state.js';
 import { generatePoolQR } from './qr.js';
 import { openJoinModal } from './join-flow.js';
@@ -354,34 +354,42 @@ export async function closePool(id) {
   // Check if user owns this pool
   const ownership = getOwnedPool(id);
   if (!ownership) {
-    alert('You do not have permission to close this pool. Only the pool owner can close it.');
+    showToast('Only the pool owner can close this pool', 'error');
     return;
   }
 
-  if (!confirm('Close this pool? Match computation will begin with a random privacy delay.')) {
-    return;
-  }
+  const poolName = ownership.poolName || 'this pool';
 
-  try {
-    // Create signed request for authentication
-    const { signature, timestamp } = createSignedRequest('pool-close', id, ownership.signingPrivateKey);
+  showConfirm(
+    'Close ' + poolName + '?',
+    'Closing the pool locks submissions and begins match computation after a ' +
+    'random privacy delay (30s&ndash;3min). Only mutual matches will be revealed. ' +
+    '<strong>This cannot be undone.</strong>',
+    'Close pool & begin matching',
+    async () => {
+      try {
+        // Create signed request for authentication
+        const { signature, timestamp } = createSignedRequest('pool-close', id, ownership.signingPrivateKey);
 
-    const result = await apiClosePool(id, {
-      ownerPublicKey: ownership.creatorPublicKey,
-      signature,
-      timestamp
-    });
+        const result = await apiClosePool(id, {
+          ownerPublicKey: ownership.creatorPublicKey,
+          signature,
+          timestamp
+        });
 
-    if (result.status === 'computing') {
-      alert(result.message + '\n\nRefresh the pool in a few minutes to see results.');
-    } else if (result.matchResult) {
-      alert('Found ' + result.matchResult.matchedTokens.length + ' matches!');
-    }
-    showPoolDetails(id);
-    loadPools();
-  } catch (e) {
-    alert(e.message);
-  }
+        if (result.status === 'computing') {
+          showToast(result.message + ' Refresh in a few minutes for results.', 'info');
+        } else if (result.matchResult) {
+          showToast('Found ' + result.matchResult.matchedTokens.length + ' matches!', 'success');
+        }
+        showPoolDetails(id);
+        loadPools();
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    },
+    { danger: true }
+  );
 }
 
 /**

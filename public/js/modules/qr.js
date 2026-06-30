@@ -3,7 +3,7 @@
  * Handles QR code generation and scanning
  */
 
-import { escapeHtml, copyText, createModal } from './ui.js';
+import { escapeHtml, copyText, createModal, showToast } from './ui.js';
 import { selectPoolForBrowse } from './browse.js';
 
 // Store for active QR stream
@@ -75,7 +75,7 @@ async function sharePool(url, name) {
  */
 export function startQRScanner() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Camera not supported on this device');
+    showToast('Camera not supported on this device', 'error');
     return;
   }
 
@@ -161,7 +161,7 @@ function handleQRResult(data) {
       document.querySelector('[data-tab="browse"]').click();
       selectPoolForBrowse();
     } else {
-      alert('Invalid QR code - no pool ID found');
+      showToast('Invalid QR code - no pool ID found', 'error');
     }
   } catch (e) {
     // Maybe it's just a pool ID directly
@@ -170,7 +170,7 @@ function handleQRResult(data) {
       document.querySelector('[data-tab="browse"]').click();
       selectPoolForBrowse();
     } else {
-      alert('Invalid QR code format');
+      showToast('Invalid QR code format', 'error');
     }
   }
 }
