@@ -8,7 +8,7 @@ import { sha256 } from 'https://esm.run/@noble/hashes@1.6.0/sha256';
 import { bytesToHex, hexToBytes, randomBytes } from 'https://esm.run/@noble/hashes@1.6.0/utils';
 
 // Domain separator for Ed25519 signatures (must match backend)
-const SIGNING_DOMAIN = 'rendezvous-sign-v1';
+const SIGNING_DOMAIN = 'matchlock-sign-v1';
 
 /**
  * Generate a new X25519 keypair
@@ -45,7 +45,7 @@ export function deriveMatchToken(myPrivateKey, theirPublicKey, poolId) {
   return bytesToHex(sha256(new Uint8Array([
     ...shared,
     ...encoder.encode(poolId),
-    ...encoder.encode('rendezvous-match-v1')
+    ...encoder.encode('matchlock-match-v1')
   ])));
 }
 
@@ -61,7 +61,7 @@ export function deriveNullifier(privateKey, poolId) {
   return bytesToHex(sha256(new Uint8Array([
     ...hexToBytes(privateKey),
     ...encoder.encode(poolId),
-    ...encoder.encode('rendezvous-nullifier-v1')
+    ...encoder.encode('matchlock-nullifier-v1')
   ])));
 }
 

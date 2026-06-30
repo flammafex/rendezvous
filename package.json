@@ -20,12 +20,13 @@
     "seed": "node dist/scripts/seed.js",
     "cli": "node dist/cli/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:contracts": "node --experimental-vm-modules node_modules/jest/bin/jest.js test/contract-matchlock-vectors.test.ts",
+    "test:live": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --testMatch '**/test/live-services.contract.ts'",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "lint": "eslint src/",
     "clean": "rm -rf dist && rm -rf data"
   },
   "dependencies": {
-    "matchlock": "file:../matchlock",
     "@automerge/automerge": "^3.2.0",
     "@noble/curves": "^1.7.0",
     "@noble/hashes": "^1.6.0",
@@ -33,6 +34,8 @@
     "commander": "^12.1.0",
     "cors": "^2.8.5",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
+    "matchlock": "file:../matchlock",
     "uuid": "^11.0.3",
     "ws": "^8.18.0"
   },

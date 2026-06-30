@@ -15,13 +15,14 @@ import {
   generateKeypair,
   generateSigningKeypair,
 } from '../rendezvous/index.js';
+import type { MatchToken, PrivateKey, PublicKey, RevealDataEntry } from '../rendezvous/index.js';
 import { deriveMatchTokens, deriveMatchToken, deriveNullifier } from '../rendezvous/crypto.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as nodeCrypto from 'crypto';
 
 // Helper to encrypt reveal data using match token as key (AES-256-GCM)
-function encryptRevealData(data: { contact: string; message: string }, matchToken: string): string {
+function encryptRevealData(data: { contact: string; message: string }, matchToken: MatchToken): string {
   const tokenBytes = Buffer.from(matchToken, 'hex');
   const key = tokenBytes.slice(0, 32);
   const iv = nodeCrypto.randomBytes(12);
@@ -139,11 +140,11 @@ console.log('');
 interface ParticipantWithKey {
   id: string;
   poolId: string;
-  publicKey: string;
+  publicKey: PublicKey;
   displayName: string;
   bio?: string;
   registeredAt: Date;
-  privateKey: string;
+  privateKey: PrivateKey;
   selectsEveryone?: boolean;
   contact?: string;
   message?: string;
@@ -224,7 +225,7 @@ for (const poolConfig of SEED_POOLS) {
       const nullifier = deriveNullifier(participant.privateKey, pool.id);
 
       // Create encrypted reveal data for each selection
-      const revealData: { matchToken: string; encryptedReveal: string }[] = [];
+      const revealData: RevealDataEntry[] = [];
       if (participant.contact || participant.message) {
         const revealContent = { contact: participant.contact || '', message: participant.message || '' };
         for (const otherKey of otherKeys) {
@@ -261,7 +262,7 @@ for (const poolConfig of SEED_POOLS) {
       const nullifier = deriveNullifier(fromParticipant.privateKey, pool.id);
 
       // Create encrypted reveal data for each selection
-      const revealData: { matchToken: string; encryptedReveal: string }[] = [];
+      const revealData: RevealDataEntry[] = [];
       if (fromParticipant.contact || fromParticipant.message) {
         const revealContent = { contact: fromParticipant.contact || '', message: fromParticipant.message || '' };
         for (const toKey of toPublicKeys) {

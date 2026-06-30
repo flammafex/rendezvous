@@ -17,6 +17,9 @@ import {
   VoterGate,
   FreebirdProof,
   WitnessProof,
+  PublicKey,
+  MatchToken,
+  CommitHash,
 } from './types.js';
 import {
   OwnerHeldPsiSetup,
@@ -60,9 +63,15 @@ export interface RendezvousStore {
   // Match result operations
   insertMatchResult(result: MatchResult): void;
   getMatchResult(poolId: string): MatchResult | undefined;
+  /**
+   * Return pools with status='closed' that have no match_results row.
+   * Used for startup recovery of pools whose scheduled match computation
+   * was interrupted by a process restart.
+   */
+  getClosedPoolsWithoutResults(): Pool[];
 
   // Token counting for match detection
-  countTokenOccurrences(poolId: string): Map<string, number>;
+  countTokenOccurrences(poolId: string): Map<MatchToken, number>;
 
   // PSI Setup operations (owner-held keys)
   insertPsiSetup(setup: OwnerHeldPsiSetup): void;
@@ -475,9 +484,20 @@ export class SQLiteStore implements RendezvousStore {
     return row ? this.rowToMatchResult(row) : undefined;
   }
 
+  getClosedPoolsWithoutResults(): Pool[] {
+    const stmt = this.db.prepare(`
+      SELECT p.* FROM pools p
+      LEFT JOIN match_results m ON m.poolId = p.id
+      WHERE p.status = 'closed' AND m.poolId IS NULL
+      ORDER BY p.updatedAt ASC
+    `);
+    const rows = stmt.all() as PoolRow[];
+    return rows.map((row) => this.rowToPool(row));
+  }
+
   // Token counting for match detection
 
-  countTokenOccurrences(poolId: string): Map<string, number> {
+  countTokenOccurrences(poolId: string): Map<MatchToken, number> {
     const stmt = this.db.prepare(`
       SELECT matchToken, COUNT(*) as count
       FROM preferences
@@ -486,10 +506,10 @@ export class SQLiteStore implements RendezvousStore {
     `);
 
     const rows = stmt.all(poolId) as { matchToken: string; count: number }[];
-    const counts = new Map<string, number>();
+    const counts = new Map<MatchToken, number>();
 
     for (const row of rows) {
-      counts.set(row.matchToken, row.count);
+      counts.set(row.matchToken as MatchToken, row.count);
     }
 
     return counts;
@@ -603,7 +623,7 @@ export class SQLiteStore implements RendezvousStore {
       id: row.id,
       name: row.name,
       description: row.description || undefined,
-      creatorPublicKey: row.creatorPublicKey,
+      creatorPublicKey: row.creatorPublicKey as PublicKey,
       creatorSigningKey: row.creatorSigningKey,
       commitDeadline: row.commitDeadline ? new Date(row.commitDeadline) : undefined,
       revealDeadline: new Date(row.revealDeadline),
@@ -621,8 +641,8 @@ export class SQLiteStore implements RendezvousStore {
     return {
       id: row.id,
       poolId: row.poolId,
-      matchToken: row.matchToken,
-      commitHash: row.commitHash || undefined,
+      matchToken: row.matchToken as MatchToken,
+      commitHash: row.commitHash ? row.commitHash as CommitHash : undefined,
       revealed: row.revealed === 1,
       submittedAt: new Date(row.submittedAt),
       eligibilityProof: row.eligibilityProof
@@ -636,7 +656,7 @@ export class SQLiteStore implements RendezvousStore {
   private rowToMatchResult(row: MatchResultRow): MatchResult {
     return {
       poolId: row.poolId,
-      matchedTokens: JSON.parse(row.matchedTokens) as string[],
+      matchedTokens: JSON.parse(row.matchedTokens) as MatchToken[],
       totalSubmissions: row.totalSubmissions,
       uniqueParticipants: row.uniqueParticipants,
       detectedAt: new Date(row.detectedAt),
@@ -650,7 +670,7 @@ export class SQLiteStore implements RendezvousStore {
     return {
       id: row.id,
       poolId: row.poolId,
-      publicKey: row.publicKey,
+      publicKey: row.publicKey as PublicKey,
       displayName: row.displayName,
       bio: row.bio || undefined,
       avatarUrl: row.avatarUrl || undefined,
@@ -948,7 +968,7 @@ export class InMemoryStore implements RendezvousStore {
     const pref = this.preferences.get(id);
     if (pref) {
       pref.revealed = true;
-      pref.matchToken = matchToken;
+      pref.matchToken = matchToken as MatchToken;
     }
   }
 
@@ -967,10 +987,17 @@ export class InMemoryStore implements RendezvousStore {
     return result ? { ...result } : undefined;
   }
 
+  getClosedPoolsWithoutResults(): Pool[] {
+    return Array.from(this.pools.values())
+      .filter((p) => p.status === 'closed' && !this.matchResults.has(p.id))
+      .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+      .map((p) => ({ ...p }));
+  }
+
   // Token counting for match detection
 
-  countTokenOccurrences(poolId: string): Map<string, number> {
-    const counts = new Map<string, number>();
+  countTokenOccurrences(poolId: string): Map<MatchToken, number> {
+    const counts = new Map<MatchToken, number>();
     const prefs = this.getPreferences({ poolId, revealed: true });
 
     for (const pref of prefs) {

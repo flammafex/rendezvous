@@ -6,6 +6,7 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuid } from 'uuid';
@@ -19,8 +20,28 @@ import {
 import { HttpFreebirdAdapter } from '../rendezvous/adapters/freebird.js';
 import { HttpWitnessAdapter } from '../rendezvous/adapters/witness.js';
 import { FederationManager, FederationConfig, FederatedPoolMetadata, JoinRequestPayload } from '../federation/index.js';
-import { decryptWithPrivateKey, deserializeEncryptedBox, hash, verifySignedRequest } from '../rendezvous/crypto.js';
-import { getPsiService, PsiJoinRequest, PsiJoinResponse, OwnerHeldPsiSetup, PendingPsiRequest, PsiResponseRecord, OwnerPsiProcessingResult } from '../psi/index.js';
+import {
+  decryptWithPrivateKey,
+  deserializeEncryptedBox,
+  hash,
+  isValidPrivateKey,
+  isValidPublicKey,
+  isValidSignature,
+  isValidSigningPublicKey,
+  verifySignedRequest,
+} from '../rendezvous/crypto.js';
+import type { PrivateKey, PublicKey } from '../rendezvous/index.js';
+import type { Signature, SigningPublicKey } from '../rendezvous/crypto.js';
+import { getPsiService } from '../psi/index.js';
+import type {
+  PsiJoinRequest,
+  PsiJoinResponse,
+  OwnerHeldPsiSetup,
+  PendingPsiRequest,
+  PsiResponseRecord,
+  OwnerPsiProcessingResult,
+  PsiClientSession,
+} from '../psi/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +56,10 @@ const DB_PATH = path.join(DATA_DIR, 'rendezvous.db');
 const FREEBIRD_VERIFIER_URL = process.env.FREEBIRD_VERIFIER_URL;
 // Witness gateway (default port 8080) - for timestamp attestation
 const WITNESS_GATEWAY_URL = process.env.WITNESS_GATEWAY_URL;
+
+// CORS configuration - comma-separated list of allowed origins.
+// When unset, CORS is disabled (same-origin only).
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS;
 
 
 // Ensure data directory exists
@@ -146,22 +171,32 @@ if (FEDERATION_ENABLED) {
         console.error('Cannot process join request: FEDERATION_PRIVATE_KEY not configured');
         return;
       }
+      if (!isValidPrivateKey(INSTANCE_PRIVATE_KEY)) {
+        console.error('Cannot process join request: FEDERATION_PRIVATE_KEY is invalid');
+        return;
+      }
+      if (!isValidPublicKey(request.publicKey)) {
+        console.error('Cannot process join request: request public key is invalid');
+        return;
+      }
+
+      const requestPublicKey = request.publicKey as PublicKey;
 
       let payload: JoinRequestPayload;
       try {
         const encryptedBox = deserializeEncryptedBox(request.encryptedPayload);
-        const decrypted = decryptWithPrivateKey(encryptedBox, INSTANCE_PRIVATE_KEY);
+        const decrypted = decryptWithPrivateKey(encryptedBox, INSTANCE_PRIVATE_KEY as PrivateKey);
         payload = JSON.parse(decrypted) as JoinRequestPayload;
       } catch (decryptErr) {
         console.error('Failed to decrypt join request payload:', decryptErr);
         return;
       }
 
-      const eligibility = await rv.checkEligibility(request.poolId, request.publicKey);
+      const eligibility = await rv.checkEligibility(request.poolId, requestPublicKey);
       if (eligibility.eligible) {
         rv.registerParticipant({
           poolId: request.poolId,
-          publicKey: request.publicKey,
+          publicKey: requestPublicKey,
           displayName: payload.displayName,
           bio: payload.bio,
         });
@@ -178,8 +213,27 @@ if (FEDERATION_ENABLED) {
 // Create Express app
 const app = express();
 
+// ============================================================================
+// Process-level error handlers
+// ============================================================================
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ALLOWED_ORIGINS ? ALLOWED_ORIGINS.split(',').map(s => s.trim()) : false,
+}));
+if (ALLOWED_ORIGINS) {
+  console.log(`CORS: restricted to ${ALLOWED_ORIGINS.split(',').map(s => s.trim()).join(', ')}`);
+} else {
+  console.log('CORS: disabled (set ALLOWED_ORIGINS to enable, comma-separated)');
+}
 app.use(express.json());
 
 // Privacy enhancement: Pad all JSON responses to fixed 8KB blocks
@@ -208,6 +262,48 @@ app.use((_req, res, next) => {
 
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, '../../public')));
+
+// ============================================================================
+// Rate Limiters (route-level middleware)
+// ============================================================================
+
+const FIFTEEN_MINUTES = 15 * 60 * 1000;
+
+// Pool creation: strict (10 per 15 min per IP)
+const createPoolLimiter = rateLimit({
+  windowMs: FIFTEEN_MINUTES,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many pool creation requests, please try again later' },
+});
+
+// Preference submission: moderate (50 per 15 min per IP)
+const submitLimiter = rateLimit({
+  windowMs: FIFTEEN_MINUTES,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many submission requests, please try again later' },
+});
+
+// PSI CPU-heavy endpoints: strict (20 per 15 min per IP)
+const psiLimiter = rateLimit({
+  windowMs: FIFTEEN_MINUTES,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many PSI requests, please try again later' },
+});
+
+// PSI response polling: moderate (100 per 15 min per IP)
+const psiPollLimiter = rateLimit({
+  windowMs: FIFTEEN_MINUTES,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many polling requests, please try again later' },
+});
 
 // Error handler type
 interface ApiError extends Error {
@@ -295,12 +391,16 @@ app.get('/api/status', async (_req: Request, res: Response) => {
 // Create a pool
 // When Freebird is configured: requires valid invite code, fails closed if disconnected
 // When Freebird is not configured: open access (development/testing mode)
-app.post('/api/pools', async (req: Request, res: Response, next: NextFunction) => {
+app.post('/api/pools', createPoolLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, description, creatorPublicKey, creatorSigningKey, commitDeadline, revealDeadline, maxPreferencesPerParticipant, ephemeral, requiresInviteToJoin, inviteCode } = req.body;
 
     if (!name || !creatorPublicKey || !creatorSigningKey || !revealDeadline) {
       res.status(400).json({ error: 'Missing required fields: name, creatorPublicKey, creatorSigningKey, revealDeadline' });
+      return;
+    }
+    if (!isValidPublicKey(creatorPublicKey)) {
+      res.status(400).json({ error: 'Invalid creatorPublicKey' });
       return;
     }
 
@@ -358,7 +458,7 @@ app.post('/api/pools', async (req: Request, res: Response, next: NextFunction) =
     const pool = rv.createPool({
       name,
       description,
-      creatorPublicKey,
+      creatorPublicKey: creatorPublicKey as PublicKey,
       creatorSigningKey,
       commitDeadline: commitDeadline ? new Date(commitDeadline) : undefined,
       revealDeadline: new Date(revealDeadline),
@@ -480,19 +580,21 @@ app.post('/api/pools/:id/close', async (req: Request, res: Response, next: NextF
     });
 
     // Compute matches after delay
-    setTimeout(async () => {
-      try {
-        const result = await rv.detectMatches(pool.id);
-        console.log(`Pool ${pool.id} match computation complete: ${result.matchedTokens.length} matches`);
+    setTimeout(() => {
+      (async () => {
+        try {
+          const result = await rv.detectMatches(pool.id);
+          console.log(`Pool ${pool.id} match computation complete: ${result.matchedTokens.length} matches`);
 
-        // Ephemeral cleanup: delete participant profiles after match detection
-        if (pool.ephemeral) {
-          const deleted = rv.deletePoolParticipants(pool.id);
-          console.log(`Pool ${pool.id} ephemeral cleanup: deleted ${deleted} participant profiles`);
+          // Ephemeral cleanup: delete participant profiles after match detection
+          if (pool.ephemeral) {
+            const deleted = rv.deletePoolParticipants(pool.id);
+            console.log(`Pool ${pool.id} ephemeral cleanup: deleted ${deleted} participant profiles`);
+          }
+        } catch (err) {
+          console.error(`Failed to compute matches for pool ${pool.id}:`, err);
         }
-      } catch (err) {
-        console.error(`Failed to compute matches for pool ${pool.id}:`, err);
-      }
+      })();
     }, randomDelay);
   } catch (error) {
     next(error);
@@ -534,9 +636,15 @@ app.post('/api/pools/:id/participants', async (req: Request, res: Response, next
       res.status(400).json({ error: 'Missing required fields: publicKey, displayName' });
       return;
     }
+    if (!isValidPublicKey(publicKey)) {
+      res.status(400).json({ error: 'Invalid publicKey' });
+      return;
+    }
+
+    const parsedPublicKey = publicKey as PublicKey;
 
     // Check eligibility before registration
-    const eligibility = await rv.checkEligibility(req.params.id, publicKey);
+    const eligibility = await rv.checkEligibility(req.params.id, parsedPublicKey);
     if (!eligibility.eligible) {
       res.status(403).json({
         error: 'Not eligible to join this pool',
@@ -547,7 +655,7 @@ app.post('/api/pools/:id/participants', async (req: Request, res: Response, next
 
     const participant = rv.registerParticipant({
       poolId: req.params.id,
-      publicKey,
+      publicKey: parsedPublicKey,
       displayName,
       bio,
       avatarUrl,
@@ -622,7 +730,7 @@ app.get('/api/pools/:id/participants/by-key/:publicKey', (req: Request, res: Res
 
 // Submit preferences
 // When pool requires invite to join and Freebird is configured, verify invite code
-app.post('/api/pools/:id/submit', async (req: Request, res: Response, next: NextFunction) => {
+app.post('/api/pools/:id/submit', submitLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { matchTokens, commitHashes, nullifier, revealData, inviteCode } = req.body;
 
@@ -901,9 +1009,43 @@ app.get('/api/pools/:id/verify', (req: Request, res: Response, next: NextFunctio
 // PSI (Private Set Intersection) Client Helpers
 // ----------------------------------------------------------------------------
 
+function parsePsiClientSession(
+  session: unknown,
+  legacyClientKey: unknown,
+  legacyInputs: unknown,
+): PsiClientSession | undefined {
+  if (
+    session &&
+    typeof session === 'object' &&
+    typeof (session as { clientKey?: unknown }).clientKey === 'string' &&
+    Array.isArray((session as { inputs?: unknown }).inputs)
+  ) {
+    const inputs = (session as { inputs: unknown[] }).inputs;
+    if (inputs.every((input) => typeof input === 'string')) {
+      return {
+        clientKey: (session as { clientKey: string }).clientKey,
+        inputs: inputs as string[],
+      };
+    }
+  }
+
+  if (
+    typeof legacyClientKey === 'string' &&
+    Array.isArray(legacyInputs) &&
+    legacyInputs.every((input) => typeof input === 'string')
+  ) {
+    return {
+      clientKey: legacyClientKey,
+      inputs: legacyInputs as string[],
+    };
+  }
+
+  return undefined;
+}
+
 // Client-side helper: Create PSI request
 // (This could also be done entirely client-side with the WASM library)
-app.post('/api/psi/create-request', async (req: Request, res: Response, next: NextFunction) => {
+app.post('/api/psi/create-request', psiLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { inputs } = req.body;
 
@@ -917,8 +1059,8 @@ app.post('/api/psi/create-request', async (req: Request, res: Response, next: Ne
 
     res.json({
       psiRequest: result.request,
-      clientKey: result.clientKey,
-      message: 'Send psiRequest to server. Keep clientKey to compute intersection.',
+      session: result.session,
+      message: 'Send psiRequest to server. Keep session to compute intersection.',
     });
   } catch (error) {
     next(error);
@@ -927,19 +1069,19 @@ app.post('/api/psi/create-request', async (req: Request, res: Response, next: Ne
 
 // Client-side helper: Compute intersection
 // (This could also be done entirely client-side with the WASM library)
-app.post('/api/psi/compute-intersection', async (req: Request, res: Response, next: NextFunction) => {
+app.post('/api/psi/compute-intersection', psiLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { clientKey, inputs, psiSetup, psiResponse } = req.body;
+    const { session, clientKey, inputs, psiSetup, psiResponse } = req.body;
+    const clientSession = parsePsiClientSession(session, clientKey, inputs);
 
-    if (!clientKey || !inputs || !psiSetup || !psiResponse) {
-      res.status(400).json({ error: 'clientKey, inputs, psiSetup, and psiResponse required' });
+    if (!clientSession || !psiSetup || !psiResponse) {
+      res.status(400).json({ error: 'session, psiSetup, and psiResponse required' });
       return;
     }
 
     const psiService = getPsiService();
     const result = await psiService.computeIntersection(
-      clientKey,
-      inputs,
+      clientSession,
       psiSetup,
       psiResponse
     );
@@ -952,19 +1094,19 @@ app.post('/api/psi/compute-intersection', async (req: Request, res: Response, ne
 
 // Client-side helper: Compute cardinality only (more private - reveals count, not identities)
 // (This could also be done entirely client-side with the WASM library)
-app.post('/api/psi/compute-cardinality', async (req: Request, res: Response, next: NextFunction) => {
+app.post('/api/psi/compute-cardinality', psiLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { clientKey, inputs, psiSetup, psiResponse } = req.body;
+    const { session, clientKey, inputs, psiSetup, psiResponse } = req.body;
+    const clientSession = parsePsiClientSession(session, clientKey, inputs);
 
-    if (!clientKey || !inputs || !psiSetup || !psiResponse) {
-      res.status(400).json({ error: 'clientKey, inputs, psiSetup, and psiResponse required' });
+    if (!clientSession || !psiSetup || !psiResponse) {
+      res.status(400).json({ error: 'session, psiSetup, and psiResponse required' });
       return;
     }
 
     const psiService = getPsiService();
     const cardinality = await psiService.computeCardinality(
-      clientKey,
-      inputs,
+      clientSession,
       psiSetup,
       psiResponse
     );
@@ -999,7 +1141,21 @@ function verifyOwnerSignature(
     return 'Signature and timestamp required';
   }
 
-  if (!verifySignedRequest(action, poolId, signature, timestamp, pool.creatorSigningKey)) {
+  if (!isValidSignature(signature)) {
+    return 'Invalid signature format';
+  }
+
+  if (!isValidSigningPublicKey(pool.creatorSigningKey)) {
+    return 'Invalid owner signing key';
+  }
+
+  if (!verifySignedRequest(
+    action,
+    poolId,
+    signature as Signature,
+    timestamp,
+    pool.creatorSigningKey as SigningPublicKey,
+  )) {
     return 'Invalid or expired signature';
   }
 
@@ -1294,7 +1450,7 @@ app.post('/api/pools/:id/psi/responses', (req: Request, res: Response, next: Nex
 /**
  * Client polls for their PSI response.
  */
-app.get('/api/psi/response/:requestId', (req: Request, res: Response, next: NextFunction) => {
+app.get('/api/psi/response/:requestId', psiPollLimiter, (req: Request, res: Response, next: NextFunction) => {
   try {
     const request = rv.store.getPsiRequest(req.params.requestId);
     if (!request) {
@@ -1530,21 +1686,23 @@ async function checkAndCloseExpiredPools(): Promise<void> {
 
       console.log(`Pool ${pool.id} past deadline. Auto-closing with ${Math.round(randomDelay / 1000)}s privacy delay`);
 
-      setTimeout(async () => {
-        try {
-          rv.closePool(pool.id);
-          const result = await rv.detectMatches(pool.id);
-          console.log(`Pool ${pool.id} auto-closed: ${result.matchedTokens.length} matches`);
+      setTimeout(() => {
+        (async () => {
+          try {
+            rv.closePool(pool.id);
+            const result = await rv.detectMatches(pool.id);
+            console.log(`Pool ${pool.id} auto-closed: ${result.matchedTokens.length} matches`);
 
-          if (pool.ephemeral) {
-            const deleted = rv.deletePoolParticipants(pool.id);
-            console.log(`Pool ${pool.id} ephemeral cleanup: deleted ${deleted} profiles`);
+            if (pool.ephemeral) {
+              const deleted = rv.deletePoolParticipants(pool.id);
+              console.log(`Pool ${pool.id} ephemeral cleanup: deleted ${deleted} profiles`);
+            }
+          } catch (err) {
+            console.error(`Failed to auto-close pool ${pool.id}:`, err);
+          } finally {
+            poolsBeingClosed.delete(pool.id);
           }
-        } catch (err) {
-          console.error(`Failed to auto-close pool ${pool.id}:`, err);
-        } finally {
-          poolsBeingClosed.delete(pool.id);
-        }
+        })();
       }, randomDelay);
     }
   }
@@ -1552,6 +1710,57 @@ async function checkAndCloseExpiredPools(): Promise<void> {
 
 // Run scheduler every minute
 let autoCloseInterval: ReturnType<typeof setInterval>;
+
+// ----------------------------------------------------------------------------
+// Startup Recovery: re-enqueue match computation for stuck 'closed' pools
+// ----------------------------------------------------------------------------
+
+// Manual close flips status to 'closed' immediately, then schedules detectMatches
+// 30s–3min later. If the process restarts in that window, the pool stays 'closed'
+// forever with no match results. This recovery step re-enqueues those pools once
+// at startup, mirroring the manual-close privacy-delay + detect + cleanup logic.
+function recoverStuckClosedPools(): void {
+  const stuckPools = rv.store.getClosedPoolsWithoutResults();
+  if (stuckPools.length === 0) {
+    return;
+  }
+
+  console.log(`Found ${stuckPools.length} stuck closed pool(s) without match results — re-enqueuing`);
+
+  for (const pool of stuckPools) {
+    // Dedup against in-flight scheduler processing
+    if (poolsBeingClosed.has(pool.id)) {
+      continue;
+    }
+    poolsBeingClosed.add(pool.id);
+    console.log(`Recovering stuck closed pool ${pool.id}`);
+
+    // Same privacy-delay range as manual close / auto-close (30s to 3min)
+    const minDelay = 30_000;
+    const maxDelay = 180_000;
+    const randomDelay = minDelay + Math.floor(Math.random() * (maxDelay - minDelay));
+
+    console.log(`Pool ${pool.id} recovery: computing matches in ${Math.round(randomDelay / 1000)}s (privacy delay)`);
+
+    setTimeout(() => {
+      (async () => {
+        try {
+          const result = await rv.detectMatches(pool.id);
+          console.log(`Pool ${pool.id} recovery complete: ${result.matchedTokens.length} matches`);
+
+          if (pool.ephemeral) {
+            const deleted = rv.deletePoolParticipants(pool.id);
+            console.log(`Pool ${pool.id} ephemeral cleanup: deleted ${deleted} participant profiles`);
+          }
+        } catch (err) {
+          console.error(`Failed to recover matches for pool ${pool.id}:`, err);
+        } finally {
+          poolsBeingClosed.delete(pool.id);
+        }
+      })();
+    }, randomDelay);
+  }
+}
 
 app.listen(PORT, async () => {
   console.log(`Rendezvous server running at http://localhost:${PORT}`);
@@ -1561,6 +1770,9 @@ app.listen(PORT, async () => {
   // Start auto-close scheduler
   autoCloseInterval = setInterval(checkAndCloseExpiredPools, 60_000);
   console.log('Auto-close scheduler started (checks every 60s)');
+
+  // Recover any pools stuck in 'closed' state without match results
+  recoverStuckClosedPools();
 
   // Start federation if enabled
   if (federation) {

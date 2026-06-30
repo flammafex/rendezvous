@@ -29,7 +29,10 @@ import {
   commitTokens,
   Pool,
   PoolStatus,
+  isValidPrivateKey,
+  isValidPublicKey,
 } from '../rendezvous/index.js';
+import type { CommitHash, PrivateKey, PublicKey } from '../rendezvous/index.js';
 
 // Default data directory
 const DATA_DIR = process.env.RENDEZVOUS_DATA_DIR || './data';
@@ -91,6 +94,24 @@ function prompt(question: string): Promise<string> {
   });
 }
 
+function parsePrivateKey(key: string): PrivateKey {
+  if (!isValidPrivateKey(key)) {
+    throw new Error('Invalid private key');
+  }
+  return key as PrivateKey;
+}
+
+function parsePublicKey(key: string): PublicKey {
+  if (!isValidPublicKey(key)) {
+    throw new Error('Invalid public key');
+  }
+  return key as PublicKey;
+}
+
+function parsePublicKeys(keys: string[]): PublicKey[] {
+  return keys.map(parsePublicKey);
+}
+
 // Create CLI program
 const program = new Command();
 
@@ -140,7 +161,9 @@ program
       }
 
       // Creator keys (generate if not provided)
-      let creatorKey = options.creatorKey;
+      let creatorKey: PublicKey | undefined = options.creatorKey
+        ? parsePublicKey(options.creatorKey)
+        : undefined;
       let signingKey: string;
       if (!creatorKey) {
         const keypair = generateKeypair();
@@ -298,10 +321,13 @@ program
       }
 
       // Derive match tokens
-      const matchTokens = deriveMatchTokens(privateKey, theirPublicKeys, poolId);
+      const parsedPrivateKey = parsePrivateKey(privateKey);
+      const parsedPublicKeys = parsePublicKeys(theirPublicKeys);
+
+      const matchTokens = deriveMatchTokens(parsedPrivateKey, parsedPublicKeys, poolId);
 
       // Derive nullifier
-      const nullifier = deriveNullifier(privateKey, poolId);
+      const nullifier = deriveNullifier(parsedPrivateKey, poolId);
 
       // Check pool phase
       const pool = rv.getPool(poolId);
@@ -313,7 +339,7 @@ program
       const phase = rv.getPoolPhase(poolId);
 
       // For commit phase, compute commitments
-      let commitHashes: string[] | undefined;
+      let commitHashes: CommitHash[] | undefined;
       if (phase.currentPhase === 'commit') {
         commitHashes = commitTokens(matchTokens);
       }
@@ -364,10 +390,13 @@ program
       }
 
       // Derive match tokens (must be same as during commit)
-      const matchTokens = deriveMatchTokens(privateKey, theirPublicKeys, poolId);
+      const parsedPrivateKey = parsePrivateKey(privateKey);
+      const parsedPublicKeys = parsePublicKeys(theirPublicKeys);
+
+      const matchTokens = deriveMatchTokens(parsedPrivateKey, parsedPublicKeys, poolId);
 
       // Derive nullifier
-      const nullifier = deriveNullifier(privateKey, poolId);
+      const nullifier = deriveNullifier(parsedPrivateKey, poolId);
 
       // Reveal
       const result = rv.revealPreferences({
@@ -414,7 +443,9 @@ program
       }
 
       // Discover matches (local computation)
-      const matches = rv.discoverMyMatches(poolId, privateKey, theirPublicKeys);
+      const parsedPrivateKey = parsePrivateKey(privateKey);
+      const parsedPublicKeys = parsePublicKeys(theirPublicKeys);
+      const matches = rv.discoverMyMatches(poolId, parsedPrivateKey, parsedPublicKeys);
 
       if (matches.length === 0) {
         console.log('No mutual matches found.');
@@ -562,8 +593,11 @@ program
       privateKey = await prompt('Enter your private key: ');
     }
 
-    const token = deriveMatchToken(privateKey, theirPublicKey, poolId);
-    const nullifier = deriveNullifier(privateKey, poolId);
+    const parsedPrivateKey = parsePrivateKey(privateKey);
+    const parsedPublicKey = parsePublicKey(theirPublicKey);
+
+    const token = deriveMatchToken(parsedPrivateKey, parsedPublicKey, poolId);
+    const nullifier = deriveNullifier(parsedPrivateKey, poolId);
 
     console.log(`Pool ID: ${poolId}`);
     console.log(`Their key: ${theirPublicKey}`);

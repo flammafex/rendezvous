@@ -14,7 +14,13 @@
  */
 
 import { WitnessAdapter } from '../gates/types.js';
-import { FreebirdProof, WitnessProof, WitnessSignature, WitnessAggregatedSignature } from '../types.js';
+import {
+  FreebirdProof,
+  WitnessProof,
+  WitnessSignature,
+  WitnessAggregatedSignature,
+  SophiaWitnessSignedAttestation,
+} from '../types.js';
 
 export interface WitnessConfig {
   /** Base URL of the Witness gateway (e.g., http://localhost:8080) */
@@ -28,11 +34,12 @@ interface FreebirdTokenPayload {
   token_b64: string;
   issuer_id: string;
   exp: number;
+  epoch: number;
 }
 
 /** Witness attestation structure */
 interface WitnessAttestation {
-  hash: number[]; // 32-byte array
+  hash: string;
   timestamp: number;
   network_id: string;
   sequence: number;
@@ -42,13 +49,13 @@ interface WitnessAttestation {
 interface MultiSigSignatures {
   signatures: Array<{
     witness_id: string;
-    signature: number[]; // Ed25519 signature bytes
+    signature: string;
   }>;
 }
 
 /** BLS aggregated format */
 interface AggregatedSignatures {
-  signature: number[]; // Aggregated BLS signature bytes
+  signature: string;
   signers: string[];
 }
 
@@ -58,6 +65,7 @@ interface TimestampResponse {
     attestation: WitnessAttestation;
     signatures: MultiSigSignatures | AggregatedSignatures;
   };
+  status?: 'confirmed' | 'pending' | 'rejected';
 }
 
 /** Response from POST /v1/verify */
@@ -66,6 +74,93 @@ interface VerifyResponse {
   verified_signatures: number;
   required_signatures: number;
   message: string;
+}
+
+const CONTRACT_VERSION = 'sophia/v1' as const;
+
+function lowerHex(value: string, name: string): string {
+  const normalized = value.toLowerCase();
+  if (!/^[0-9a-f]+$/.test(normalized)) {
+    throw new Error(`${name} must be lowercase hex`);
+  }
+  return normalized;
+}
+
+function sha256Hex(value: string, name: string): string {
+  const normalized = lowerHex(value, name);
+  if (normalized.length !== 64) {
+    throw new Error(`${name} must be a 32-byte SHA-256 hex value`);
+  }
+  return normalized;
+}
+
+function normalizeSignatureSet(signatures: MultiSigSignatures | AggregatedSignatures | SophiaWitnessSignedAttestation['signatures']): SophiaWitnessSignedAttestation['signatures'] {
+  if ('kind' in signatures) {
+    if (signatures.kind === 'multisig') {
+      return {
+        kind: 'multisig',
+        signatures: signatures.signatures.map((signature, index) => ({
+          witness_id: signature.witness_id,
+          signature: lowerHex(signature.signature, `signatures[${index}].signature`),
+        })),
+      };
+    }
+    return {
+      kind: 'aggregated',
+      signature: lowerHex(signatures.signature, 'signatures.signature'),
+      signers: [...signatures.signers],
+    };
+  }
+
+  if ('signatures' in signatures) {
+    return {
+      kind: 'multisig',
+      signatures: signatures.signatures.map((signature, index) => ({
+        witness_id: signature.witness_id,
+        signature: lowerHex(signature.signature, `signatures[${index}].signature`),
+      })),
+    };
+  }
+
+  return {
+    kind: 'aggregated',
+    signature: lowerHex(signatures.signature, 'signatures.signature'),
+    signers: [...signatures.signers],
+  };
+}
+
+function normalizeSignedAttestation(raw: TimestampResponse['attestation'] | SophiaWitnessSignedAttestation): SophiaWitnessSignedAttestation {
+  const attestation = raw.attestation;
+  return {
+    contract_version: CONTRACT_VERSION,
+    artifact_type: 'witness.signed_attestation',
+    attestation: {
+      hash: sha256Hex(attestation.hash, 'attestation.hash'),
+      timestamp: attestation.timestamp,
+      network_id: attestation.network_id,
+      sequence: attestation.sequence,
+    },
+    signatures: normalizeSignatureSet(raw.signatures),
+  };
+}
+
+function toWireSignedAttestation(canonical: SophiaWitnessSignedAttestation): TimestampResponse['attestation'] {
+  const signatures = canonical.signatures.kind === 'multisig'
+    ? {
+        signatures: canonical.signatures.signatures.map(signature => ({
+          witness_id: signature.witness_id,
+          signature: signature.signature,
+        })),
+      }
+    : {
+        signature: canonical.signatures.signature,
+        signers: [...canonical.signatures.signers],
+      };
+
+  return {
+    attestation: { ...canonical.attestation },
+    signatures,
+  };
 }
 
 /**
@@ -96,10 +191,15 @@ export class HttpWitnessAdapter implements WitnessAdapter {
       const body: { hash: string; freebird_token?: FreebirdTokenPayload } = { hash: data };
 
       if (freebirdProof) {
+        if (freebirdProof.epoch === undefined) {
+          throw new Error('Freebird token epoch required for Witness authentication');
+        }
+
         body.freebird_token = {
           token_b64: freebirdProof.tokenValue,
           issuer_id: freebirdProof.issuerId,
           exp: Math.floor(freebirdProof.expiration / 1000), // Convert ms to seconds
+          epoch: freebirdProof.epoch,
         };
       }
 
@@ -123,43 +223,7 @@ export class HttpWitnessAdapter implements WitnessAdapter {
       }
 
       const result = await response.json() as TimestampResponse;
-      const signed = result.attestation;
-      const att = signed.attestation;
-
-      // Convert hash bytes array to hex string
-      const hashHex = Array.from(att.hash)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-
-      // Determine signature format and convert
-      const sigs = signed.signatures;
-      let signatures: WitnessSignature[] | WitnessAggregatedSignature;
-
-      if ('signatures' in sigs) {
-        // Multi-sig format
-        signatures = sigs.signatures.map(sig => ({
-          witnessId: sig.witness_id,
-          signature: Array.from(sig.signature)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join(''),
-        }));
-      } else {
-        // BLS aggregated format
-        signatures = {
-          signature: Array.from(sigs.signature)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join(''),
-          signers: sigs.signers,
-        };
-      }
-
-      return {
-        hash: hashHex,
-        timestamp: att.timestamp,
-        networkId: att.network_id,
-        sequence: att.sequence,
-        signatures,
-      };
+      return this.toWitnessProof(normalizeSignedAttestation(result.attestation));
     } catch (error) {
       clearTimeout(timeoutId);
       throw new Error(`Witness attestation error: ${error}`);
@@ -177,40 +241,7 @@ export class HttpWitnessAdapter implements WitnessAdapter {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      // Convert hex hash string to byte array
-      const hashBytes = [];
-      for (let i = 0; i < proof.hash.length; i += 2) {
-        hashBytes.push(parseInt(proof.hash.substr(i, 2), 16));
-      }
-
-      // Determine signature format and convert back to API format
-      let signatures: MultiSigSignatures | AggregatedSignatures;
-
-      if (Array.isArray(proof.signatures)) {
-        // Multi-sig format
-        signatures = {
-          signatures: proof.signatures.map(sig => ({
-            witness_id: sig.witnessId,
-            signature: this.hexToBytes(sig.signature),
-          })),
-        };
-      } else {
-        // BLS aggregated format
-        signatures = {
-          signature: this.hexToBytes(proof.signatures.signature),
-          signers: proof.signatures.signers,
-        };
-      }
-
-      const attestation = {
-        attestation: {
-          hash: hashBytes,
-          timestamp: proof.timestamp,
-          network_id: proof.networkId,
-          sequence: proof.sequence,
-        },
-        signatures,
-      };
+      const attestation = toWireSignedAttestation(this.toCanonicalSignedAttestation(proof));
 
       const response = await fetch(`${this.gatewayUrl}/v1/verify`, {
         method: 'POST',
@@ -234,11 +265,72 @@ export class HttpWitnessAdapter implements WitnessAdapter {
     }
   }
 
-  private hexToBytes(hex: string): number[] {
-    const bytes = [];
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes.push(parseInt(hex.substr(i, 2), 16));
+  private toWitnessProof(canonical: SophiaWitnessSignedAttestation): WitnessProof {
+    const { attestation, signatures } = canonical;
+    let proofSignatures: WitnessSignature[] | WitnessAggregatedSignature;
+
+    if (signatures.kind === 'multisig') {
+      proofSignatures = signatures.signatures.map(signature => ({
+        witnessId: signature.witness_id,
+        signature: signature.signature,
+      }));
+    } else {
+      proofSignatures = {
+        signature: signatures.signature,
+        signers: [...signatures.signers],
+      };
     }
-    return bytes;
+
+    return {
+      hash: attestation.hash,
+      timestamp: attestation.timestamp,
+      networkId: attestation.network_id,
+      sequence: attestation.sequence,
+      signatures: proofSignatures,
+      canonical,
+    };
   }
+
+  private toCanonicalSignedAttestation(proof: WitnessProof): SophiaWitnessSignedAttestation {
+    if (proof.canonical) {
+      return normalizeSignedAttestation(proof.canonical);
+    }
+
+    if (Array.isArray(proof.signatures)) {
+      return {
+        contract_version: CONTRACT_VERSION,
+        artifact_type: 'witness.signed_attestation',
+        attestation: {
+          hash: sha256Hex(proof.hash, 'attestation.hash'),
+          timestamp: proof.timestamp,
+          network_id: proof.networkId,
+          sequence: proof.sequence,
+        },
+        signatures: {
+          kind: 'multisig',
+          signatures: proof.signatures.map(signature => ({
+            witness_id: signature.witnessId,
+            signature: signature.signature,
+          })),
+        },
+      };
+    }
+
+    return {
+      contract_version: CONTRACT_VERSION,
+      artifact_type: 'witness.signed_attestation',
+      attestation: {
+        hash: sha256Hex(proof.hash, 'attestation.hash'),
+        timestamp: proof.timestamp,
+        network_id: proof.networkId,
+        sequence: proof.sequence,
+      },
+      signatures: {
+        kind: 'aggregated',
+        signature: proof.signatures.signature,
+        signers: proof.signatures.signers,
+      },
+    };
+  }
+
 }

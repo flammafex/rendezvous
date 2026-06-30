@@ -36,7 +36,7 @@ If only one submits, token appears once → no information leaked.
 
 ### Private Set Intersection (PSI)
 - **Owner-held key PSI** - Pool owners can use PSI to process match queries without learning joiner preferences
-- **WASM-based** - Uses @openmined/psi.js for client-side intersection computation
+- **Provided by matchlock** - PSI operations are implemented in the `matchlock` package (which wraps `@openmined/psi.js` internally)
 - **Cardinality-only mode** - Option to reveal only match count, not identities
 
 ### Federation
@@ -213,7 +213,7 @@ src/
 │   └── index.ts          # Public API
 ├── psi/
 │   ├── types.ts          # PSI type definitions
-│   └── service.ts        # PSI operations (@openmined/psi.js)
+│   └── service.ts        # PSI operations (via matchlock)
 ├── federation/
 │   ├── types.ts          # Federation message types
 │   ├── manager.ts        # CRDT sync & peer management

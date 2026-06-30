@@ -11,6 +11,7 @@ import {
   Pool,
   RendezvousError,
   RendezvousErrorCode,
+  MatchToken,
 } from './types.js';
 import { RendezvousStore } from './storage.js';
 import { PoolManager } from './pool.js';
@@ -26,11 +27,11 @@ const DECOY_MAX = 8;
  * Decoys are indistinguishable from real tokens (random 32-byte hex strings).
  * They will only appear once in the pool, so they won't affect match detection.
  */
-function generateDecoyTokens(): string[] {
+function generateDecoyTokens(): MatchToken[] {
   const count = DECOY_MIN + Math.floor(Math.random() * (DECOY_MAX - DECOY_MIN + 1));
-  const decoys: string[] = [];
+  const decoys: MatchToken[] = [];
   for (let i = 0; i < count; i++) {
-    decoys.push(randomHex(32)); // 32 bytes = 64 hex chars, same as SHA-256 hash
+    decoys.push(randomHex(32) as MatchToken); // 32 bytes = 64 hex chars, same as SHA-256 hash
   }
   return decoys;
 }
@@ -186,7 +187,7 @@ export class SubmissionManager {
       if (!isValidMatchToken(token)) {
         throw new RendezvousError(
           RendezvousErrorCode.INVALID_INPUT,
-          `Invalid match token format: ${token.substring(0, 16)}...`,
+          `Invalid match token format: ${String(token).substring(0, 16)}...`,
         );
       }
     }
@@ -363,7 +364,7 @@ export class SubmissionManager {
 
     for (const pref of unrevealed) {
       // Find a matching token from the user's submission
-      let matchedToken: string | null = null;
+      let matchedToken: MatchToken | null = null;
 
       for (const token of tokenSet) {
         if (pref.commitHash && verifyCommitment(token, pref.commitHash)) {

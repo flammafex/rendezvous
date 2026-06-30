@@ -46,7 +46,7 @@ export class HttpFreebirdAdapter implements FreebirdAdapter {
   /**
    * Verify a VOPRF token.
    *
-   * @param proof - Contains token_b64 (V3 self-contained token)
+   * @param proof - Contains token_b64 (V4 private-verification token)
    * @returns True if token is valid and not replayed
    */
   async verify(proof: FreebirdProof): Promise<boolean> {
@@ -58,7 +58,7 @@ export class HttpFreebirdAdapter implements FreebirdAdapter {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      // V3 tokens are self-contained — verifier only needs the token itself
+      // The V4 verifier only needs the finalized private-verification token.
       const response = await fetch(`${this.verifierUrl}/v1/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,7 +100,7 @@ export class HttpFreebirdAdapter implements FreebirdAdapter {
    * This is a convenience method that constructs a FreebirdProof from
    * a raw token string using default issuer.
    *
-   * @param inviteCode - Base64-encoded V3 redemption token
+   * @param inviteCode - Base64url-encoded V4 private-verification token
    * @param issuerId - Issuer ID (default: 'default')
    * @returns True if token is valid
    */

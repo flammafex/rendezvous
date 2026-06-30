@@ -28,8 +28,10 @@ import {
 } from './types.js';
 import {
   encryptForPublicKey,
+  isValidPublicKey,
   serializeEncryptedBox,
 } from '../rendezvous/crypto.js';
+import type { PublicKey } from '../rendezvous/index.js';
 import { FederationAuthProvider } from './freebird-client.js';
 
 type SyncState = Automerge.SyncState;
@@ -238,6 +240,9 @@ export class FederationManager extends EventEmitter {
     if (!pool.ownerPublicKey) {
       throw new Error('Pool owner public key not available for encryption');
     }
+    if (!isValidPublicKey(pool.ownerPublicKey)) {
+      throw new Error('Pool owner public key is invalid');
+    }
 
     const ownerPeer = this.peers.get(pool.ownerInstance);
     if (!ownerPeer?.connected) {
@@ -253,7 +258,7 @@ export class FederationManager extends EventEmitter {
       bio,
       freebirdProof,
     };
-    const encryptedBox = encryptForPublicKey(JSON.stringify(payload), pool.ownerPublicKey);
+    const encryptedBox = encryptForPublicKey(JSON.stringify(payload), pool.ownerPublicKey as PublicKey);
     const encryptedPayload = serializeEncryptedBox(encryptedBox);
 
     const request: AnonymousJoinRequestMessage = {

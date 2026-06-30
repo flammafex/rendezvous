@@ -116,7 +116,7 @@ export interface Preference {
   poolId: string;
 
   /**
-   * The match token: H(DH_shared || pool_id || "rendezvous-match-v1")
+   * The match token: H(DH_shared || pool_id || "matchlock-match-v1")
    * Same for both parties if they select each other.
    */
   matchToken: MatchToken;
@@ -282,12 +282,40 @@ export type VoterGate =
 
 /** Freebird eligibility proof (unlinkable token) */
 export interface FreebirdProof {
-  /** Base64-encoded V3 redemption token (self-contained) */
+  /** Base64url-encoded V4 private-verification token */
   tokenValue: string;
   /** Token expiration timestamp (ms) */
   expiration: number;
   /** Issuer identifier */
   issuerId: string;
+  /** Freebird key epoch that issued the token */
+  epoch?: number;
+}
+
+export type SophiaWitnessSignatures =
+  | {
+      kind: 'multisig';
+      signatures: Array<{
+        witness_id: string;
+        signature: string;
+      }>;
+    }
+  | {
+      kind: 'aggregated';
+      signature: string;
+      signers: string[];
+    };
+
+export interface SophiaWitnessSignedAttestation {
+  contract_version: 'sophia/v1';
+  artifact_type: 'witness.signed_attestation';
+  attestation: {
+    hash: string;
+    timestamp: number;
+    network_id: string;
+    sequence: number;
+  };
+  signatures: SophiaWitnessSignatures;
 }
 
 /** Witness timestamp attestation */
@@ -302,6 +330,8 @@ export interface WitnessProof {
   sequence: number;
   /** Witness signatures (multi-sig or aggregated) */
   signatures: WitnessSignature[] | WitnessAggregatedSignature;
+  /** Canonical Sophia v1 Witness artifact returned by the adapter boundary. */
+  canonical?: SophiaWitnessSignedAttestation;
 }
 
 /** BLS aggregated signature */

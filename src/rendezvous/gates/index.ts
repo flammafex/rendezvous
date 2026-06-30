@@ -47,24 +47,6 @@ export class GateSystem {
    * @returns Gate result
    */
   async evaluate(gate: VoterGate, context: GateContext): Promise<GateResult> {
-    // Verify Freebird proof if provided
-    if (context.freebirdProof && this.freebird) {
-      const proofValid = await this.freebird.verify(context.freebirdProof);
-      if (!proofValid) {
-        return {
-          eligible: false,
-          reason: 'Invalid Freebird proof',
-        };
-      }
-
-      if (this.freebird.isExpired(context.freebirdProof)) {
-        return {
-          eligible: false,
-          reason: 'Freebird proof expired',
-        };
-      }
-    }
-
     // Find appropriate evaluator
     const evaluator = this.evaluators.find((e) => e.handles(gate));
     if (!evaluator) {
