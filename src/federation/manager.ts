@@ -66,10 +66,18 @@ export class FederationManager extends EventEmitter {
   private syncInterval?: ReturnType<typeof setInterval>;
   private running = false;
   private authProvider: FederationAuthProvider;
+  private sharedSecret?: string;
+  /**
+   * Sockets that have completed the shared-secret handshake (or are outbound
+   * connections we initiated, which are trusted). Only these sockets may send
+   * identified federation messages (sync, pool_announce, result_notify, ping/pong).
+   */
+  private authenticatedSockets: Set<WebSocket> = new Set();
 
   constructor(config: FederationConfig) {
     super();
     this.config = config;
+    this.sharedSecret = config.sharedSecret;
 
     // Initialize Automerge document with federation state
     this.doc = Automerge.from<FederationState>({
@@ -100,6 +108,15 @@ export class FederationManager extends EventEmitter {
     }
 
     this.running = true;
+
+    if (this.sharedSecret) {
+      console.log('Federation auth enabled (shared-secret handshake required)');
+    } else {
+      console.warn(
+        'WARNING: Federation auth disabled (no sharedSecret set). ' +
+          'Incoming connections are unauthenticated. Set FederationConfig.sharedSecret in production.'
+      );
+    }
 
     // Start WebSocket server for incoming peer connections
     if (port) {
@@ -353,13 +370,36 @@ export class FederationManager extends EventEmitter {
     try {
       const ws = new WebSocket(endpoint);
 
+      // M8: Connection timeout — if the peer doesn't complete the WebSocket
+      // handshake within 10s (black-hole routing), terminate and trigger the
+      // reconnect backoff so we don't hang indefinitely.
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING) {
+          console.error(`Federation peer connection timeout: ${endpoint}`);
+          ws.terminate();
+          // Trigger reconnect backoff (no peer entry yet, so use a fixed 5s)
+          setTimeout(() => this.connectToPeer(endpoint), 5000);
+        }
+      }, 10_000);
+
       ws.on('open', () => {
-        // Send handshake with our instance info
-        const handshake = JSON.stringify({
+        clearTimeout(connectionTimeout);
+
+        // Outbound connections are trusted (we initiated them to known peers).
+        // Mark as authenticated so we accept identified messages on this socket.
+        this.authenticatedSockets.add(ws);
+
+        // C5: Send handshake with our instance info AND shared secret.
+        // The secret proves to the remote peer that we are an authorized
+        // federation peer before any identified messages are exchanged.
+        const handshake: { type: string; instance: InstanceId; secret?: string } = {
           type: 'handshake',
           instance: this.config.instance,
-        });
-        ws.send(handshake);
+        };
+        if (this.sharedSecret) {
+          handshake.secret = this.sharedSecret;
+        }
+        ws.send(JSON.stringify(handshake));
       });
 
       ws.on('message', (data) => {
@@ -367,6 +407,8 @@ export class FederationManager extends EventEmitter {
       });
 
       ws.on('close', () => {
+        clearTimeout(connectionTimeout);
+        this.authenticatedSockets.delete(ws);
         // Find and mark peer as disconnected
         for (const [instanceId, peer] of this.peers) {
           if (peer.instance.endpoint === endpoint) {
@@ -382,6 +424,7 @@ export class FederationManager extends EventEmitter {
       });
 
       ws.on('error', (err) => {
+        clearTimeout(connectionTimeout);
         console.error(`Federation peer connection error: ${err.message}`);
       });
     } catch (err) {
@@ -401,6 +444,7 @@ export class FederationManager extends EventEmitter {
     });
 
     ws.on('close', () => {
+      this.authenticatedSockets.delete(ws);
       if (connectedInstanceId) {
         const peer = this.peers.get(connectedInstanceId);
         if (peer) {
@@ -410,6 +454,10 @@ export class FederationManager extends EventEmitter {
         }
       }
     });
+
+    ws.on('error', () => {
+      this.authenticatedSockets.delete(ws);
+    });
   }
 
   private handleMessage(ws: WebSocket, data: string, endpoint?: string): string | null {
@@ -418,6 +466,29 @@ export class FederationManager extends EventEmitter {
 
       // Handle handshake
       if (message.type === 'handshake') {
+        // C5: Shared-secret authentication.
+        // If a shared secret is configured, the incoming peer must prove
+        // knowledge of it before we accept any identified messages from
+        // this socket. Anonymous messages (join_request, token_relay) are
+        // still allowed without the secret since they authenticate via
+        // Freebird tokens.
+        if (this.sharedSecret) {
+          if (message.secret !== this.sharedSecret) {
+            console.warn('Rejected unauthenticated federation connection: invalid shared secret');
+            this.authenticatedSockets.delete(ws);
+            ws.close(4001, 'policy violation');
+            return null;
+          }
+          this.authenticatedSockets.add(ws);
+        } else {
+          // Development mode: no shared secret configured. Allow the
+          // connection but warn that federation auth is disabled.
+          console.warn(
+            'Federation connection accepted without shared-secret auth (development mode)'
+          );
+          this.authenticatedSockets.add(ws);
+        }
+
         const instance = message.instance as InstanceId;
         this.peers.set(instance.id, {
           instance: endpoint ? { ...instance, endpoint } : instance,
@@ -441,10 +512,21 @@ export class FederationManager extends EventEmitter {
       }
 
       // Check if this is an anonymous message (has authToken, no from)
+      // These are authenticated by the Freebird token, NOT the shared secret,
+      // so they are allowed on unauthenticated sockets too.
       if (isAnonymousMessage(message)) {
         this.handleAnonymousMessage(message).catch(err => {
           console.error('Failed to handle anonymous message:', err);
         });
+        return null;
+      }
+
+      // C5: Identified federation messages require a completed handshake.
+      // If this socket hasn't authenticated (and a shared secret is configured),
+      // reject the message and close the connection.
+      if (this.sharedSecret && !this.authenticatedSockets.has(ws)) {
+        console.warn('Rejected identified message from unauthenticated federation connection');
+        ws.close(4001, 'policy violation');
         return null;
       }
 

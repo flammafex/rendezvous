@@ -208,6 +208,16 @@ export interface FederationConfig {
   freebirdIssuerUrl: string;
   /** Freebird verifier URL (defaults to issuer URL) */
   freebirdVerifierUrl?: string;
+  /**
+   * Shared secret for authenticating incoming federation WebSocket connections.
+   * When set, peers must send a `{ type: 'handshake', secret }` message as
+   * their first message before any identified messages (sync, pool_announce,
+   * result_notify, ping/pong) are accepted. Anonymous messages (join_request,
+   * token_relay) are still allowed without the secret since they authenticate
+   * via Freebird tokens. When unset (development mode), connections are
+   * accepted without a shared-secret handshake but a warning is logged.
+   */
+  sharedSecret?: string;
 }
 
 // ============================================================================

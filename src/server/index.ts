@@ -6,6 +6,7 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -83,6 +84,12 @@ if (FREEBIRD_VERIFIER_URL) {
   });
   config.freebird = freebirdAdapter;
 } else {
+  // Fail-closed default in production: without Freebird, pool creation is
+  // open to the world. In dev/test, keep the warn-and-allow behavior.
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: FREEBIRD_VERIFIER_URL is not set. In production, pool creation would be open to anyone. Set FREEBIRD_VERIFIER_URL or run with NODE_ENV != production.');
+    process.exit(1);
+  }
   console.log('Freebird: not configured (set FREEBIRD_VERIFIER_URL to enable)');
   console.log('WARNING: Pool creation is open to anyone without Freebird configured');
 }
@@ -108,6 +115,14 @@ const FEDERATION_ENABLED = process.env.FEDERATION_ENABLED === 'true';
 const FEDERATION_PORT = parseInt(process.env.FEDERATION_PORT || '3001', 10);
 const FEDERATION_INSTANCE_NAME = process.env.FEDERATION_INSTANCE_NAME || 'rendezvous-1';
 const FEDERATION_PEERS = process.env.FEDERATION_PEERS?.split(',').filter(Boolean) || [];
+// Publicly-reachable WebSocket endpoint for this instance, advertised to peers.
+// When unset, falls back to ws://localhost:<port> which is unreachable from
+// other hosts — only suitable for local development.
+const FEDERATION_PUBLIC_ENDPOINT = process.env.FEDERATION_PUBLIC_ENDPOINT || '';
+// Optional shared secret for authenticating incoming federation WebSocket
+// connections. When unset, the manager accepts unauthenticated connections
+// (dev mode) and logs a warning.
+const FEDERATION_SHARED_SECRET = process.env.FEDERATION_SHARED_SECRET || '';
 
 // Generate or load instance identity
 const INSTANCE_ID = process.env.FEDERATION_INSTANCE_ID || uuid();
@@ -127,13 +142,14 @@ function buildFederationConfig(): FederationConfig {
     instance: {
       id: INSTANCE_ID,
       name: FEDERATION_INSTANCE_NAME,
-      endpoint: `ws://localhost:${FEDERATION_PORT}`,
+      endpoint: FEDERATION_PUBLIC_ENDPOINT || `ws://localhost:${FEDERATION_PORT}`,
       publicKey: INSTANCE_PUBLIC_KEY,
     },
     peers: FEDERATION_PEERS,
     syncInterval: 30000,
     freebirdIssuerUrl: FREEBIRD_ISSUER_URL,
     freebirdVerifierUrl: FEDERATION_VERIFIER_URL || undefined,
+    sharedSecret: FEDERATION_SHARED_SECRET || undefined,
   };
 }
 
@@ -147,6 +163,16 @@ if (FEDERATION_ENABLED) {
   console.log(`Federation: enabled as "${FEDERATION_INSTANCE_NAME}" (${INSTANCE_ID})`);
   console.log(`Federation peers: ${FEDERATION_PEERS.length > 0 ? FEDERATION_PEERS.join(', ') : 'none'}`);
   console.log(`Freebird: ${FREEBIRD_ISSUER_URL}`);
+  if (!FEDERATION_PUBLIC_ENDPOINT) {
+    console.warn('WARNING: FEDERATION_PUBLIC_ENDPOINT is not set — advertising ws://localhost (unreachable from peers). Set FEDERATION_PUBLIC_ENDPOINT to a publicly reachable ws:// or wss:// URL.');
+  } else if (FEDERATION_PUBLIC_ENDPOINT.startsWith('ws://') && process.env.NODE_ENV === 'production') {
+    console.warn('WARNING: FEDERATION_PUBLIC_ENDPOINT uses plaintext ws:// in production. Use wss:// to protect federation traffic.');
+  } else if (FEDERATION_PUBLIC_ENDPOINT.startsWith('wss://')) {
+    console.log(`Federation public endpoint: ${FEDERATION_PUBLIC_ENDPOINT}`);
+  }
+  if (!FEDERATION_SHARED_SECRET) {
+    console.warn('WARNING: FEDERATION_SHARED_SECRET is not set — federation WebSocket accepts unauthenticated connections (dev mode).');
+  }
   federation = new FederationManager(buildFederationConfig());
 
   // Handle federated token relays (all use anonymous Freebird tokens)
@@ -226,6 +252,22 @@ process.on('uncaughtException', (err) => {
 });
 
 // Middleware
+// Security headers via helmet. The vanilla-JS PWA in public/ uses inline
+// scripts, so the default CSP would break the UI; we relax script-src to
+// allow 'self' and 'unsafe-inline'. This is a deliberate tradeoff: the UI
+// is a trusted first-party PWA, and tightening further would require
+// refactoring all inline scripts to external files with nonces/SRI.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'", 'ws:', 'wss:'],
+    },
+  },
+}));
 app.use(cors({
   origin: ALLOWED_ORIGINS ? ALLOWED_ORIGINS.split(',').map(s => s.trim()) : false,
 }));
@@ -234,7 +276,7 @@ if (ALLOWED_ORIGINS) {
 } else {
   console.log('CORS: disabled (set ALLOWED_ORIGINS to enable, comma-separated)');
 }
-app.use(express.json());
+app.use(express.json({ limit: '256kb' }));
 
 // Privacy enhancement: Pad all JSON responses to fixed 8KB blocks
 // This prevents response size analysis attacks
@@ -739,6 +781,14 @@ app.post('/api/pools/:id/submit', submitLimiter, async (req: Request, res: Respo
       return;
     }
 
+    // Server-side cap on matchTokens, independent of the pool's
+    // maxPreferencesPerParticipant setting, to bound resource use when the
+    // pool-level cap is unset.
+    if (Array.isArray(matchTokens) && matchTokens.length > 1000) {
+      res.status(400).json({ error: 'Too many match tokens (max 1000)' });
+      return;
+    }
+
     // Check if pool requires invite to join
     const pool = rv.getPool(req.params.id);
     if (!pool) {
@@ -1121,6 +1171,42 @@ app.post('/api/psi/compute-cardinality', psiLimiter, async (req: Request, res: R
 // PSI Owner-Held Key Endpoints (Option B - Pool Owner Holds Key)
 // ----------------------------------------------------------------------------
 
+// ============================================================================
+// Owner signature replay cache (H1)
+// ============================================================================
+//
+// verifySignedRequest (re-exported from matchlock) enforces a 5-minute
+// timestamp window but has no nonce or replay cache, so a captured valid
+// signature could be replayed within that window. We hash the signature
+// string and track recently-seen hashes with a TTL matching the 5-min window.
+// Entries are pruned on each check to bound memory growth.
+
+const SIGNATURE_REPLAY_TTL_MS = 5 * 60 * 1000; // matches verifySignedRequest window
+const signatureReplayCache = new Map<string, number>(); // hash -> expiresAt (ms epoch)
+
+function pruneExpiredReplayEntries(): void {
+  const now = Date.now();
+  for (const [sigHash, expiresAt] of signatureReplayCache) {
+    if (expiresAt <= now) {
+      signatureReplayCache.delete(sigHash);
+    }
+  }
+}
+
+/**
+ * Returns true if the signature hash was already seen (replay), false otherwise.
+ * Records the hash on first sight.
+ */
+function isReplayedSignature(signature: string): boolean {
+  pruneExpiredReplayEntries();
+  const sigHash = hash(signature);
+  if (signatureReplayCache.has(sigHash)) {
+    return true;
+  }
+  signatureReplayCache.set(sigHash, Date.now() + SIGNATURE_REPLAY_TTL_MS);
+  return false;
+}
+
 /**
  * Verify owner signature for authenticated endpoints.
  * Returns error message if verification fails, undefined if successful.
@@ -1157,6 +1243,13 @@ function verifyOwnerSignature(
     pool.creatorSigningKey as SigningPublicKey,
   )) {
     return 'Invalid or expired signature';
+  }
+
+  // Replay protection: after the signature verifies, ensure it has not been
+  // used before within the 5-minute window.
+  if (isReplayedSignature(signature)) {
+    console.error(`Signature replay detected for action "${action}" on pool ${poolId}`);
+    return 'Replay detected';
   }
 
   return undefined;
@@ -1449,6 +1542,10 @@ app.post('/api/pools/:id/psi/responses', (req: Request, res: Response, next: Nex
 
 /**
  * Client polls for their PSI response.
+ * Requires the auth token presented at request-creation time (matched via
+ * authTokenHash). Accept the token via the `?token=` query parameter or the
+ * `X-PSI-Auth-Token` header. If the request was created without an auth
+ * token, no token is required to poll.
  */
 app.get('/api/psi/response/:requestId', psiPollLimiter, (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -1456,6 +1553,22 @@ app.get('/api/psi/response/:requestId', psiPollLimiter, (req: Request, res: Resp
     if (!request) {
       res.status(404).json({ error: 'Request not found' });
       return;
+    }
+
+    // Auth token check: if the request was created with an authTokenHash,
+    // the caller must present the matching token.
+    if (request.authTokenHash) {
+      const presentedToken =
+        (typeof req.query.token === 'string' && req.query.token) ||
+        (typeof req.headers['x-psi-auth-token'] === 'string' && req.headers['x-psi-auth-token']);
+      if (!presentedToken) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+      if (hash(presentedToken) !== request.authTokenHash) {
+        res.status(403).json({ error: 'Invalid auth token' });
+        return;
+      }
     }
 
     if (request.status === 'pending') {
@@ -1644,8 +1757,11 @@ app.get('/api/federation/instances', (_req: Request, res: Response) => {
 // ----------------------------------------------------------------------------
 
 app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
+  // Always log the full error server-side for debugging.
   console.error('API Error:', err);
 
+  // RendezvousError instances are user-facing 400s; their messages are safe
+  // to return to clients. Generic errors (500s) must not leak internals.
   if (err instanceof RendezvousError) {
     res.status(400).json({
       error: err.message,
@@ -1655,7 +1771,7 @@ app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
   }
 
   res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
+    error: 'Internal server error',
   });
 });
 
