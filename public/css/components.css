@@ -751,3 +751,330 @@ body.offline::before {
 .create-pool-reveal.hidden {
   display: none;
 }
+
+/* === Onboarding / Empty State === */
+
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  padding: 0.5rem 0 1rem;
+  animation: onboardingFadeIn 0.4s ease-out;
+}
+
+/* Hero */
+.onboarding-hero {
+  text-align: center;
+  padding: 1rem 0 0.5rem;
+}
+
+.onboarding-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.onboarding-title {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 600;
+  margin: 0 auto 1rem;
+  max-width: 22ch;
+  background: var(--gradient-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--accent);
+}
+
+.onboarding-lede {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 60ch;
+  margin: 0 auto 1.25rem;
+}
+
+.onboarding-usecases {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+}
+
+.onboarding-usecases li {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 2rem;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Sections */
+.onboarding-section {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 1.75rem;
+}
+
+.onboarding-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.5rem;
+}
+
+.onboarding-section-lede {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0 0 1.5rem;
+  max-width: 60ch;
+}
+
+/* DH Diagram */
+.dh-diagram {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  padding: 1.5rem 1.25rem;
+  margin-bottom: 1.25rem;
+  /* Subtle dot grid for atmosphere */
+  background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: 0 0;
+}
+
+.dh-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.dh-party {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  padding: 1rem 0.75rem;
+  text-align: center;
+  position: relative;
+}
+
+.dh-party-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.dh-derivation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.dh-derivation code {
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+.dh-op {
+  color: var(--text-subtle);
+  font-size: 0.85rem;
+}
+
+.dh-arrow {
+  /* CSS-drawn downward arrow */
+  width: 2px;
+  height: 18px;
+  background: var(--accent);
+  margin: 0.6rem auto 0;
+  position: relative;
+  opacity: 0.7;
+}
+
+.dh-arrow::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--accent);
+}
+
+.dh-shared {
+  text-align: center;
+  padding-top: 0.25rem;
+}
+
+.dh-shared-token {
+  display: inline-block;
+  background: var(--accent-muted);
+  border: 1px solid var(--accent);
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent);
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+.dh-shared-note {
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+}
+
+.dh-outcomes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.dh-outcome {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.dh-outcome strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dh-outcome-marker {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 0.4rem;
+  background: var(--text-subtle);
+}
+
+.dh-outcome-match .dh-outcome-marker {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.dh-outcome-silent .dh-outcome-marker {
+  background: var(--text-subtle);
+}
+
+/* Steps */
+.onboarding-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.onboarding-steps li {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.step-marker {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--accent-muted);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+
+.step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-body strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.step-body p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* Privacy grid */
+.privacy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.privacy-item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent);
+  border-radius: 0.5rem;
+  padding: 0.85rem 0.9rem;
+}
+
+.privacy-item-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.3rem;
+}
+
+.privacy-item p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+@keyframes onboardingFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive */
+@media (max-width: 540px) {
+  .onboarding-title { font-size: 1.3rem; }
+  .dh-parties { grid-template-columns: 1fr; }
+  .privacy-grid { grid-template-columns: 1fr; }
+}

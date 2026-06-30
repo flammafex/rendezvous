@@ -60,6 +60,150 @@ export function hideCreatePoolForm() {
 }
 
 /**
+ * Render the onboarding / empty-state experience shown when no pools exist.
+ *
+ * Explains what Rendezvous does, how the Diffie-Hellman match-token insight
+ * works, what to do next, and the privacy guarantees the protocol enforces.
+ * Returns an HTML string; the caller injects it into #poolList.
+ */
+function renderOnboarding() {
+  return `
+<div class="onboarding" aria-labelledby="onboarding-title">
+
+  <section class="onboarding-hero">
+    <div class="onboarding-eyebrow">Rendezvous</div>
+    <h1 id="onboarding-title" class="onboarding-title">
+      Find mutual interest without revealing who selected whom.
+    </h1>
+    <p class="onboarding-lede">
+      Two parties can discover they mutually selected each other through a shared
+      match token &mdash; derived independently from each person's private key and
+      the other's public key. If only one selects, nothing is revealed.
+    </p>
+    <ul class="onboarding-usecases">
+      <li>Dating</li>
+      <li>Co-founder matching</li>
+      <li>Hackathon teams</li>
+      <li>Roommates</li>
+      <li>Mentor pairing</li>
+    </ul>
+  </section>
+
+  <section class="onboarding-section">
+    <h2 class="onboarding-section-title">How it works</h2>
+    <p class="onboarding-section-lede">
+      Each person derives the same token from their private key and the other's
+      public key (Diffie-Hellman). If both submit, the token appears twice
+      &mdash; that's a match.
+    </p>
+
+    <div class="dh-diagram" role="img" aria-label="Alice and Bob each derive the same match token from their own private key and the other's public key.">
+      <div class="dh-parties">
+        <div class="dh-party">
+          <div class="dh-party-name">Alice</div>
+          <div class="dh-derivation">
+            <code>priv<sub>A</sub></code>
+            <span class="dh-op">+</span>
+            <code>pub<sub>B</sub></code>
+          </div>
+          <div class="dh-arrow" aria-hidden="true"></div>
+        </div>
+        <div class="dh-party">
+          <div class="dh-party-name">Bob</div>
+          <div class="dh-derivation">
+            <code>priv<sub>B</sub></code>
+            <span class="dh-op">+</span>
+            <code>pub<sub>A</sub></code>
+          </div>
+          <div class="dh-arrow" aria-hidden="true"></div>
+        </div>
+      </div>
+      <div class="dh-shared">
+        <code class="dh-shared-token">match_token</code>
+        <div class="dh-shared-note">same value, derived independently</div>
+      </div>
+    </div>
+
+    <ul class="dh-outcomes">
+      <li class="dh-outcome dh-outcome-match">
+        <span class="dh-outcome-marker" aria-hidden="true"></span>
+        <span>Both submit &rarr; token appears <strong>twice</strong> &rarr; match revealed</span>
+      </li>
+      <li class="dh-outcome dh-outcome-silent">
+        <span class="dh-outcome-marker" aria-hidden="true"></span>
+        <span>One submits &rarr; token appears <strong>once</strong> &rarr; nothing revealed</span>
+      </li>
+    </ul>
+  </section>
+
+  <section class="onboarding-section">
+    <h2 class="onboarding-section-title">Getting started</h2>
+    <ol class="onboarding-steps">
+      <li>
+        <div class="step-marker">1</div>
+        <div class="step-body">
+          <strong>Create a pool</strong>
+          <p>If you have an invite code (or this instance is open), create a pool for your group below.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-marker">2</div>
+        <div class="step-body">
+          <strong>Share it</strong>
+          <p>Send the pool link or QR code to the people you want to match among.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-marker">3</div>
+        <div class="step-body">
+          <strong>Generate a fresh keypair</strong>
+          <p>Each participant generates a new keypair per pool for pseudonymity. It lives on your device only.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-marker">4</div>
+        <div class="step-body">
+          <strong>Browse and select</strong>
+          <p>Register a profile, browse the others, and select whoever you're interested in.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-marker">5</div>
+        <div class="step-body">
+          <strong>Close the pool</strong>
+          <p>When the pool closes, only mutual matches are revealed to each other. Unilateral selections stay private.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="onboarding-section">
+    <h2 class="onboarding-section-title">Privacy guarantees</h2>
+    <div class="privacy-grid">
+      <div class="privacy-item">
+        <div class="privacy-item-title">Decoy tokens</div>
+        <p>Each submission is padded with 3&ndash;8 random tokens, so the server can't tell how many people you actually selected.</p>
+      </div>
+      <div class="privacy-item">
+        <div class="privacy-item-title">Padded responses</div>
+        <p>All API responses are padded to a fixed 8KB size, hiding participant and match counts.</p>
+      </div>
+      <div class="privacy-item">
+        <div class="privacy-item-title">Random delay</div>
+        <p>A 30s&ndash;3min random delay before match computation makes timing correlation with submissions impractical.</p>
+      </div>
+      <div class="privacy-item">
+        <div class="privacy-item-title">Ephemeral pools</div>
+        <p>Pools marked ephemeral delete all participant profiles after match computation completes.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+`;
+}
+
+/**
  * Load and display all pools
  */
 export async function loadPools() {
@@ -81,7 +225,7 @@ export async function loadPools() {
         item.addEventListener('click', () => showPoolDetails(item.dataset.poolId));
       });
     } else {
-      el.innerHTML = '<p class="text-muted">No pools yet</p>';
+      el.innerHTML = renderOnboarding();
     }
   } catch (e) {
     el.innerHTML = '<p class="text-error">' + e.message + '</p>';
