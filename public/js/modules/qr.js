@@ -77,12 +77,13 @@ async function sharePool(url, name) {
 export function startQRScanner() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showToast('Camera not supported on this device', 'error');
+    showManualPoolInput();
     return;
   }
 
   const modal = createModal(
     '<h3>Scan QR Code</h3>' +
-    '<video id="qr-video" autoplay playsinline style="width:100%;max-width:300px;border-radius:0.5rem;"></video>' +
+    '<video id="qr-video" autoplay playsinline class="qr-video"></video>' +
     '<canvas id="qr-canvas" style="display:none;"></canvas>' +
     '<p class="text-sm text-muted" id="qr-status">Point camera at QR code</p>' +
     '<button class="btn-secondary mt-2" data-action="cancel">Cancel</button>'
@@ -103,9 +104,119 @@ export function startQRScanner() {
       requestAnimationFrame(() => scanQRFrame(video, canvas, ctx));
     })
     .catch((err) => {
-      document.getElementById('qr-status').textContent = 'Camera access denied';
       console.error('Camera error:', err);
+      showToast('Camera access denied', 'error');
+      renderScannerError(modal, video);
     });
+}
+
+/**
+ * Replace the scanner modal contents with an error state and manual fallback.
+ * Stops the video element and removes it from the DOM.
+ *
+ * @param {HTMLElement} modal - The QR modal element
+ * @param {HTMLVideoElement} video - The video element to clean up
+ */
+function renderScannerError(modal, video) {
+  // Stop and remove the video element
+  if (video && video.parentNode) {
+    try {
+      video.pause();
+      video.srcObject = null;
+    } catch (e) {
+      // ignore
+    }
+    video.remove();
+  }
+
+  // Remove the hidden canvas and status
+  const canvas = modal.querySelector('#qr-canvas');
+  if (canvas) canvas.remove();
+  const status = modal.querySelector('#qr-status');
+  if (status) status.remove();
+  const cancelBtn = modal.querySelector('[data-action="cancel"]');
+  if (cancelBtn) cancelBtn.remove();
+
+  // Render the error state
+  const content = modal.querySelector('.qr-modal-content');
+  if (!content) return;
+  content.innerHTML =
+    '<h3>Camera unavailable</h3>' +
+    '<div class="result-box error">' +
+    '<p>Camera access was denied or is unavailable. You can enter the pool ID manually instead.</p>' +
+    '</div>' +
+    '<div class="form-group mt-2">' +
+    '<label for="qr-manual-pool-id">Pool ID</label>' +
+    '<input type="text" id="qr-manual-pool-id" class="input-mono" placeholder="Pool UUID or pool URL">' +
+    '</div>' +
+    '<div class="button-row">' +
+    '<button class="btn-primary" data-action="manual-join">Join Pool</button>' +
+    '<button class="btn-secondary" data-action="cancel">Close</button>' +
+    '</div>';
+
+  const manualInput = content.querySelector('#qr-manual-pool-id');
+  const joinBtn = content.querySelector('[data-action="manual-join"]');
+  const closeBtn = content.querySelector('[data-action="cancel"]');
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => modal.remove());
+  }
+  if (joinBtn && manualInput) {
+    joinBtn.addEventListener('click', () => {
+      const value = manualInput.value.trim();
+      if (value) {
+        modal.remove();
+        handleQRResult(value);
+      }
+    });
+    manualInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        joinBtn.click();
+      }
+    });
+    manualInput.focus();
+  }
+}
+
+/**
+ * Show a manual pool-ID input modal (used when camera is not supported at all).
+ */
+function showManualPoolInput() {
+  const modal = createModal(
+    '<h3>Enter Pool ID</h3>' +
+    '<p class="text-sm text-muted">Camera scanning isn\'t available on this device. Enter the pool ID or scan URL manually.</p>' +
+    '<div class="form-group mt-2">' +
+    '<label for="qr-manual-pool-id">Pool ID</label>' +
+    '<input type="text" id="qr-manual-pool-id" class="input-mono" placeholder="Pool UUID or pool URL">' +
+    '</div>' +
+    '<div class="button-row">' +
+    '<button class="btn-primary" data-action="manual-join">Join Pool</button>' +
+    '<button class="btn-secondary" data-action="cancel">Close</button>' +
+    '</div>'
+  );
+
+  document.body.appendChild(modal);
+  modal.querySelector('[data-action="cancel"]').addEventListener('click', () => modal.remove());
+
+  const manualInput = modal.querySelector('#qr-manual-pool-id');
+  const joinBtn = modal.querySelector('[data-action="manual-join"]');
+  if (joinBtn && manualInput) {
+    joinBtn.addEventListener('click', () => {
+      const value = manualInput.value.trim();
+      if (value) {
+        modal.remove();
+        handleQRResult(value);
+      }
+    });
+    manualInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        joinBtn.click();
+      }
+    });
+    manualInput.focus();
+  }
 }
 
 /**

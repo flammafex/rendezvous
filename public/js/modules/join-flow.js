@@ -161,10 +161,10 @@ function createJoinModal() {
           <div class="join-confirm-list" id="joinFinalList"></div>
         </div>
 
-        <div class="form-group" style="background:var(--bg-input);padding:1rem;border-radius:0.5rem;border:1px solid var(--border);">
-          <label style="color:var(--accent);font-weight:500;">Contact Info (revealed only to mutual matches)</label>
-          <input type="text" id="joinContactInfo" placeholder="e.g., email@example.com or @twitter_handle" style="margin-bottom:0.5rem;">
-          <textarea id="joinMessage" rows="2" placeholder="Optional message to your matches..." style="margin-bottom:0;"></textarea>
+        <div class="form-group form-group-highlight">
+          <label for="joinContactInfo">Contact Info (revealed only to mutual matches)</label>
+          <input type="text" id="joinContactInfo" placeholder="e.g., email@example.com or @twitter_handle">
+          <textarea id="joinMessage" rows="2" placeholder="Optional message to your matches..."></textarea>
           <p class="text-sm text-muted mt-1">This will be encrypted and only visible to people who also selected you.</p>
         </div>
 
@@ -172,7 +172,7 @@ function createJoinModal() {
 
         <div class="join-modal-footer">
           <button class="btn-secondary" id="joinBackStep3">Back</button>
-          <button class="btn-success" id="joinSubmitBtn" style="flex:1;">Submit Encrypted Preferences</button>
+          <button class="btn-success join-modal-footer-grow" id="joinSubmitBtn">Submit Encrypted Preferences</button>
         </div>
       </div>
 
@@ -184,7 +184,7 @@ function createJoinModal() {
           <p class="text-muted">Check the Discover tab after the pool closes to see your matches.</p>
         </div>
         <div class="join-modal-footer">
-          <button class="btn-primary" id="joinDoneBtn" style="flex:1;">Done</button>
+          <button class="btn-primary join-modal-footer-grow" id="joinDoneBtn">Done</button>
         </div>
       </div>
     </div>

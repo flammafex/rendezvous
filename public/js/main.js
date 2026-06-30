@@ -93,6 +93,10 @@ function initTabs() {
  * Load and display service status
  */
 async function loadServiceStatus() {
+  const summaryDot = document.getElementById('status-summary-dot');
+  const summaryText = document.getElementById('status-summary-text');
+  const serviceStatus = document.getElementById('serviceStatus');
+
   try {
     const status = await fetchStatus();
 
@@ -150,6 +154,30 @@ async function loadServiceStatus() {
       federationDot.className = 'status-dot unconfigured';
       federationText.textContent = 'Federation: Disabled';
     }
+
+    // Compute summary: "All systems operational" if everything connected,
+    // otherwise "Degraded". Unconfigured counts as degraded for visibility.
+    const services = [
+      { state: status.freebird, dot: freebirdDot },
+      { state: status.witness, dot: witnessDot },
+      { state: status.federation === 'connected' ? 'connected' : status.federation, dot: federationDot }
+    ];
+    const allConnected = services.every(s => s.state === 'connected');
+    const anyDisconnected = services.some(s => s.state === 'disconnected');
+
+    if (allConnected) {
+      summaryDot.className = 'status-dot connected';
+      summaryText.textContent = 'All systems operational';
+    } else if (anyDisconnected) {
+      summaryDot.className = 'status-dot disconnected';
+      summaryText.textContent = 'Degraded';
+    } else {
+      summaryDot.className = 'status-dot unconfigured';
+      summaryText.textContent = 'Partially configured';
+    }
+
+    // Reveal the collapsed indicator now that we have data
+    if (serviceStatus) serviceStatus.hidden = false;
   } catch (e) {
     document.getElementById('freebird-status-dot').className = 'status-dot disconnected';
     document.getElementById('freebird-status-text').textContent = 'Freebird: Error';
@@ -157,7 +185,49 @@ async function loadServiceStatus() {
     document.getElementById('witness-status-text').textContent = 'Witness: Error';
     document.getElementById('federation-status-dot').className = 'status-dot disconnected';
     document.getElementById('federation-status-text').textContent = 'Federation: Error';
+    summaryDot.className = 'status-dot disconnected';
+    summaryText.textContent = 'Status unavailable';
+    if (serviceStatus) serviceStatus.hidden = false;
   }
+}
+
+/**
+ * Initialize the collapsed service-status indicator toggle.
+ * Click/hover/tap expands the per-service details.
+ */
+function initServiceStatusToggle() {
+  const summary = document.getElementById('statusSummary');
+  const details = document.getElementById('statusDetails');
+  if (!summary || !details) return;
+
+  let expanded = false;
+
+  const setExpanded = (value) => {
+    expanded = value;
+    summary.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    details.hidden = !expanded;
+  };
+
+  // Click toggles
+  summary.addEventListener('click', (e) => {
+    e.preventDefault();
+    setExpanded(!expanded);
+  });
+
+  // Hover expands (desktop), mouseleave collapses if not pinned by click
+  summary.addEventListener('mouseenter', () => setExpanded(true));
+  summary.addEventListener('mouseleave', () => { if (!expanded) setExpanded(false); });
+
+  // Also keep details open on hover, collapse on leave (unless pinned)
+  details.addEventListener('mouseenter', () => setExpanded(true));
+  details.addEventListener('mouseleave', () => { if (!expanded) setExpanded(false); });
+
+  // Escape collapses
+  summary.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      setExpanded(false);
+    }
+  });
 }
 
 /**
@@ -247,6 +317,9 @@ function initGlobalHandlers() {
 function init() {
   // Initialize tab navigation
   initTabs();
+
+  // Initialize service status toggle
+  initServiceStatusToggle();
 
   // Initialize all module listeners
   initPoolListeners();

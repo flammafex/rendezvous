@@ -2,18 +2,6 @@
  * State management for Rendezvous
  */
 
-// Browse state
-export const browseState = {
-  poolId: null,
-  poolName: null,
-  requiresInviteToJoin: false,
-  participants: [],
-  currentIndex: 0,
-  selections: [],
-  myPublicKey: null,
-  myPrivateKey: null
-};
-
 // Current keypair (temporary, not yet saved)
 let _currentKeypair = null;
 
@@ -50,36 +38,6 @@ export function setCurrentKeypair(keypair) {
  */
 export function setInviteRequired(required) {
   _inviteRequired = required;
-}
-
-/**
- * Reset browse state
- */
-export function resetBrowseState() {
-  browseState.poolId = null;
-  browseState.poolName = null;
-  browseState.requiresInviteToJoin = false;
-  browseState.participants = [];
-  browseState.currentIndex = 0;
-  browseState.selections = [];
-  browseState.myPublicKey = null;
-  browseState.myPrivateKey = null;
-}
-
-/**
- * Add a selection
- * @param {object} selection - Selection object with publicKey and displayName
- */
-export function addSelection(selection) {
-  browseState.selections.push(selection);
-}
-
-/**
- * Remove a selection by public key
- * @param {string} publicKey - Public key to remove
- */
-export function removeSelection(publicKey) {
-  browseState.selections = browseState.selections.filter(s => s.publicKey !== publicKey);
 }
 
 /**

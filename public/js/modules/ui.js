@@ -290,15 +290,42 @@ export function showConfirm(title, message, confirmLabel, onConfirm, opts = {}) 
 }
 
 /**
- * Copy text to clipboard
+ * Copy text to clipboard, with a fallback for insecure contexts.
+ *
+ * Tries the async Clipboard API first. If that rejects (e.g. insecure
+ * context, permissions denied), falls back to a temporary textarea +
+ * document.execCommand('copy'). Shows a toast on success or failure.
+ *
  * @param {string} text - Text to copy
  */
 export async function copyText(text) {
+  // Try the modern async Clipboard API first
   try {
     await navigator.clipboard.writeText(text);
     showToast('Copied!', 'success');
+    return;
   } catch (err) {
-    console.error('Failed to copy:', err);
+    console.error('Clipboard API failed, falling back:', err);
+  }
+
+  // Fallback: temporary textarea + execCommand
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'absolute';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    if (ok) {
+      showToast('Copied!', 'success');
+    } else {
+      showToast('Copy failed', 'error');
+    }
+  } catch (fallbackErr) {
+    console.error('execCommand fallback failed:', fallbackErr);
     showToast('Copy failed', 'error');
   }
 }

@@ -1,12 +1,44 @@
 /* Component Styles */
 
-/* Service Status */
+/* Service Status - collapsed indicator (M5) */
 .service-status {
+  margin-top: 1rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 2rem;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.status-summary:hover,
+.status-summary:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.status-summary .status-dot {
+  box-shadow: none;
+}
+
+.status-details {
   display: flex;
-  justify-content: center;
   gap: 1.5rem;
-  margin-top: 1.25rem;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .status-item {
@@ -1222,4 +1254,112 @@ body.offline::before {
 
 .card.card-enter {
   animation: fadeIn 0.3s ease-out;
+}
+
+/* === M2: Extracted inline-style patterns === */
+
+/* Owner / ephemeral badges in pool details (replaces inline background/font-size) */
+.status.status-owner {
+  background: var(--accent);
+  color: white;
+  font-size: 0.65rem;
+}
+
+.status.status-ephemeral {
+  background: var(--warning);
+  color: black;
+  font-size: 0.65rem;
+}
+
+/* Inline checkbox row (replaces inline flex/align/gap on form-groups) */
+.form-group-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.form-group-inline input[type="checkbox"] {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.form-group-inline label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.form-group-inline label .text-sm {
+  display: block;
+}
+
+/* Contact-info box shown to mutual matches (replaces duplicated inline styles) */
+.match-contact {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: var(--accent-muted);
+  border-radius: 0.25rem;
+}
+
+.match-contact .match-contact-handle {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* Button row (replaces inline flex/gap/flex-wrap on button groups) */
+.button-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.button-row > .btn-primary,
+.button-row > .btn-success {
+  flex: 1;
+}
+
+/* Highlighted card variant (replaces inline gradient/border on Pseudonym card) */
+.card.card-highlight {
+  background: var(--gradient-card);
+  border-color: var(--accent);
+}
+
+/* Highlighted form-group (replaces inline bg/padding/border on contact-info blocks) */
+.form-group-highlight {
+  background: var(--bg-input);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+}
+
+.form-group-highlight label {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.form-group-highlight input,
+.form-group-highlight textarea {
+  margin-bottom: 0.5rem;
+}
+
+.form-group-highlight input:last-child,
+.form-group-highlight textarea:last-child {
+  margin-bottom: 0;
+}
+
+/* Inline button spacing in pool details (replaces inline margin-left) */
+.pool-details-actions .btn-secondary,
+.pool-details-actions .btn-warning {
+  margin-left: 0.5rem;
+}
+
+.pool-details-actions .btn-secondary:first-child,
+.pool-details-actions .btn-warning:first-child {
+  margin-left: 0;
+}
+
+/* QR video styling (replaces inline width/max-width/border-radius) */
+.qr-video {
+  width: 100%;
+  max-width: 300px;
+  border-radius: 0.5rem;
 }

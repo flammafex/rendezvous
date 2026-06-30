@@ -475,6 +475,11 @@
   min-width: 80px;
 }
 
+/* Grow variant for the primary action button (replaces inline flex:1) */
+.join-modal-footer .join-modal-footer-grow {
+  flex: 1;
+}
+
 /* Loading state */
 .join-loading {
   display: flex;

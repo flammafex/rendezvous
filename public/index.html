@@ -26,18 +26,24 @@
     <header>
       <img src="rendezvous.webp" alt="Rendezvous"/>
       <p>Private mutual matching - Find mutual interest without revealing unilateral preferences</p>
-      <div class="service-status">
-        <div class="status-item">
-          <span id="freebird-status-dot" class="status-dot"></span>
-          <span id="freebird-status-text">Freebird</span>
-        </div>
-        <div class="status-item">
-          <span id="witness-status-dot" class="status-dot"></span>
-          <span id="witness-status-text">Witness</span>
-        </div>
-        <div class="status-item">
-          <span id="federation-status-dot" class="status-dot"></span>
-          <span id="federation-status-text">Federation</span>
+      <div class="service-status" id="serviceStatus" hidden>
+        <button class="status-summary" id="statusSummary" aria-expanded="false" aria-haspopup="true">
+          <span class="status-dot" id="status-summary-dot" aria-hidden="true"></span>
+          <span id="status-summary-text">Checking status...</span>
+        </button>
+        <div class="status-details" id="statusDetails" role="region" aria-label="Service status details" hidden>
+          <div class="status-item" aria-label="Freebird">
+            <span id="freebird-status-dot" class="status-dot" aria-hidden="true"></span>
+            <span id="freebird-status-text">Freebird</span>
+          </div>
+          <div class="status-item" aria-label="Witness">
+            <span id="witness-status-dot" class="status-dot" aria-hidden="true"></span>
+            <span id="witness-status-text">Witness</span>
+          </div>
+          <div class="status-item" aria-label="Federation">
+            <span id="federation-status-dot" class="status-dot" aria-hidden="true"></span>
+            <span id="federation-status-text">Federation</span>
+          </div>
         </div>
       </div>
     </header>
@@ -87,18 +93,18 @@
             <label for="maxPreferences">Max Preferences per Person</label>
             <input type="number" id="maxPreferences" placeholder="Unlimited" min="1">
           </div>
-          <div class="form-group" style="display:flex;align-items:center;gap:0.75rem;">
-            <input type="checkbox" id="poolEphemeral" style="width:auto;">
-            <label for="poolEphemeral" style="margin:0;cursor:pointer;">
+          <div class="form-group form-group-inline">
+            <input type="checkbox" id="poolEphemeral">
+            <label for="poolEphemeral">
               <strong>Ephemeral Mode</strong>
-              <span class="text-sm text-muted" style="display:block;">Auto-delete participant profiles after pool closes</span>
+              <span class="text-sm text-muted">Auto-delete participant profiles after pool closes</span>
             </label>
           </div>
-          <div id="requireInviteSection" class="form-group" style="display:flex;align-items:center;gap:0.75rem;">
-            <input type="checkbox" id="poolRequiresInvite" style="width:auto;">
-            <label for="poolRequiresInvite" style="margin:0;cursor:pointer;">
+          <div id="requireInviteSection" class="form-group form-group-inline">
+            <input type="checkbox" id="poolRequiresInvite">
+            <label for="poolRequiresInvite">
               <strong>Require Invite to Join</strong>
-              <span class="text-sm text-muted" style="display:block;">Participants must have a Freebird invite code to join this pool</span>
+              <span class="text-sm text-muted">Participants must have a Freebird invite code to join this pool</span>
             </label>
           </div>
           <div id="inviteCodeSection" class="form-group hidden">
@@ -129,8 +135,8 @@
           <label for="browsePoolId">Or enter pool ID directly:</label>
           <input type="text" id="browsePoolId" class="input-mono" placeholder="Pool UUID">
         </div>
-        <div style="display:flex;gap:0.5rem;">
-          <button class="btn-primary" style="flex:1;" id="browseStartBtn">Browse & Select</button>
+        <div class="button-row">
+          <button class="btn-primary" id="browseStartBtn">Browse & Select</button>
           <button class="btn-secondary" id="browseScanBtn" title="Scan QR Code">Scan QR</button>
         </div>
       </div>
@@ -166,7 +172,7 @@
 
     <!-- Keys Tab -->
     <div id="keys" class="panel" role="tabpanel" aria-labelledby="tab-keys">
-      <div class="card" style="background: var(--gradient-card); border-color: var(--accent);">
+      <div class="card card-highlight">
         <h2>Pseudonym Rotation</h2>
         <p class="text-muted mb-2">For maximum privacy, use a fresh keypair for each pool. This prevents correlation between your activities across different pools.</p>
         <div class="privacy-note">
@@ -219,7 +225,7 @@
           <strong>Privacy:</strong> Keys are encrypted with your passphrase before being encoded in the QR code.
           Only someone with both the QR code and your passphrase can access your keys.
         </div>
-        <div style="display:flex;gap:1rem;margin-top:1rem;flex-wrap:wrap;">
+        <div class="button-row mt-2">
           <button class="btn-primary" onclick="showExportKeysModal()">Export Keys to QR</button>
           <button class="btn-secondary" onclick="showImportKeysModal()">Import Keys from QR</button>
         </div>

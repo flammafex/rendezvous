@@ -269,8 +269,8 @@ export async function showPoolDetails(id) {
       '<p><strong>ID:</strong> <code>' + escapeHtml(id) + '</code> <span id="poolIdCopyAction"></span></p>' +
       '<p><strong>Status:</strong> <span class="status status-' + pool.phase.currentPhase + '">' +
       pool.phase.currentPhase + '</span>' +
-      (isOwner ? ' <span class="status" style="background:var(--accent);font-size:0.65rem;">OWNER</span>' : '') +
-      (pool.ephemeral ? ' <span class="status" style="background:var(--warning);color:black;font-size:0.65rem;">EPHEMERAL</span>' : '') +
+      (isOwner ? ' <span class="status status-owner">OWNER</span>' : '') +
+      (pool.ephemeral ? ' <span class="status status-ephemeral">EPHEMERAL</span>' : '') +
       '</p>' +
       '<p><strong>Participants:</strong> ' + parts.total + '</p>' +
       '<p><strong>Deadline:</strong> ' + new Date(pool.revealDeadline).toLocaleString() + '</p>' +
@@ -281,7 +281,7 @@ export async function showPoolDetails(id) {
         ? '<div class="match-result"><div class="match-count">' +
           pool.matchResult.matchedTokens.length + '</div><div class="match-label">Matches</div></div>'
         : '') +
-      '<div id="poolDetailsActions" class="mt-2"></div>';
+      '<div id="poolDetailsActions" class="mt-2 pool-details-actions"></div>';
 
     // Add event handlers
     const copyAction = contentContainer.querySelector('#poolIdCopyAction');
@@ -307,7 +307,6 @@ export async function showPoolDetails(id) {
       const shareBtn = document.createElement('button');
       shareBtn.className = 'btn-secondary';
       shareBtn.textContent = 'Share QR';
-      shareBtn.style.marginLeft = '0.5rem';
       shareBtn.dataset.poolId = id;
       shareBtn.addEventListener('click', () => generatePoolQR(id, poolName));
       actions.appendChild(shareBtn);
@@ -316,7 +315,6 @@ export async function showPoolDetails(id) {
         const closeBtn = document.createElement('button');
         closeBtn.className = 'btn-warning';
         closeBtn.textContent = 'Close';
-        closeBtn.style.marginLeft = '0.5rem';
         closeBtn.dataset.poolId = id;
         closeBtn.addEventListener('click', () => closePool(id));
         actions.appendChild(closeBtn);
