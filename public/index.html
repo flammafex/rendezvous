@@ -42,15 +42,15 @@
       </div>
     </header>
 
-    <div class="tabs">
-      <button class="tab active" data-tab="pools">Pools</button>
-      <button class="tab visitor-hidden" data-tab="browse">Browse & Select</button>
-      <button class="tab visitor-hidden" data-tab="discover">Discover Matches</button>
-      <button class="tab visitor-hidden" data-tab="keys">My Keys</button>
+    <div class="tabs" role="tablist" aria-label="Main navigation">
+      <button class="tab active" id="tab-pools" role="tab" data-tab="pools" aria-selected="true" aria-controls="pools" tabindex="0">Pools</button>
+      <button class="tab visitor-hidden" id="tab-browse" role="tab" data-tab="browse" aria-selected="false" aria-controls="browse" tabindex="-1" aria-hidden="true">Browse & Select</button>
+      <button class="tab visitor-hidden" id="tab-discover" role="tab" data-tab="discover" aria-selected="false" aria-controls="discover" tabindex="-1" aria-hidden="true">Discover Matches</button>
+      <button class="tab visitor-hidden" id="tab-keys" role="tab" data-tab="keys" aria-selected="false" aria-controls="keys" tabindex="-1" aria-hidden="true">My Keys</button>
     </div>
 
     <!-- Pools Tab -->
-    <div id="pools" class="panel active">
+    <div id="pools" class="panel active" role="tabpanel" aria-labelledby="tab-pools">
       <div class="card">
         <h2>Active Pools</h2>
         <button class="btn-secondary btn-sm mb-2" data-action="refresh-pools">Refresh</button>
@@ -117,118 +117,30 @@
     </div>
 
     <!-- Browse Tab -->
-    <div id="browse" class="panel">
-      <div class="step-indicator">
-        <div class="step active" id="step1"><span class="step-number">1</span><span>Select Pool</span></div>
-        <div class="step" id="step2"><span class="step-number">2</span><span>Register</span></div>
-        <div class="step" id="step3"><span class="step-number">3</span><span>Browse</span></div>
-        <div class="step" id="step4"><span class="step-number">4</span><span>Submit</span></div>
-      </div>
-
-      <div id="browseStep1" class="browse-container">
-        <div class="card">
-          <h2>Select a Pool to Join</h2>
-          <div class="form-group">
-            <label>Choose an active pool:</label>
-            <select id="browsePoolSelect"><option value="">-- Select a pool --</option></select>
-          </div>
-          <div class="form-group">
-            <label>Or enter pool ID directly:</label>
-            <input type="text" id="browsePoolId" class="input-mono" placeholder="Pool UUID">
-          </div>
-          <div style="display:flex;gap:0.5rem;">
-            <button class="btn-primary" style="flex:1;" onclick="selectPoolForBrowse()">Continue</button>
-            <button class="btn-secondary" onclick="startQRScanner()" title="Scan QR Code">Scan QR</button>
-          </div>
+    <div id="browse" class="panel" role="tabpanel" aria-labelledby="tab-browse">
+      <div class="card">
+        <h2>Join a Pool</h2>
+        <p class="text-muted mb-2">Select a pool to register your profile, browse participants, and submit your selections. The guided flow walks you through each step.</p>
+        <div class="form-group">
+          <label for="browsePoolSelect">Choose an active pool:</label>
+          <select id="browsePoolSelect"><option value="">-- Select a pool --</option></select>
+        </div>
+        <div class="form-group">
+          <label for="browsePoolId">Or enter pool ID directly:</label>
+          <input type="text" id="browsePoolId" class="input-mono" placeholder="Pool UUID">
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+          <button class="btn-primary" style="flex:1;" id="browseStartBtn">Browse & Select</button>
+          <button class="btn-secondary" id="browseScanBtn" title="Scan QR Code">Scan QR</button>
         </div>
       </div>
-
-      <div id="browseStep2" class="browse-container hidden">
-        <div class="card">
-          <h2>Register Your Profile</h2>
-          <p class="text-muted mb-2">Create a profile that others will see when browsing.</p>
-          <form id="registerForm">
-            <div class="form-group">
-              <label for="registerDisplayName">Display Name *</label>
-              <input type="text" id="registerDisplayName" placeholder="Your name" required>
-            </div>
-            <div class="form-group">
-              <label for="registerBio">Bio</label>
-              <textarea id="registerBio" placeholder="Tell people about yourself..." rows="3"></textarea>
-            </div>
-            <div class="form-group">
-              <label for="registerPublicKeyInput">Public Key *</label>
-              <input type="text" id="registerPublicKeyInput" class="input-mono" placeholder="64-char hex public key" required>
-              <p class="text-sm text-muted">Enter your public key or <a href="#" onclick="fillFromSavedKey(); return false;">use last saved key</a></p>
-            </div>
-            <div class="form-group">
-              <label for="registerPrivateKeyInput">Private Key *</label>
-              <input type="password" id="registerPrivateKeyInput" class="input-mono" placeholder="64-char hex private key" required>
-              <p class="text-sm text-muted">Needed later to submit preferences (stored locally only)</p>
-            </div>
-            <button type="submit" class="btn-primary">Register & Start Browsing</button>
-          </form>
-          <button class="btn-secondary mt-2" onclick="goToBrowseStep(1)">Back</button>
-        </div>
-      </div>
-
-      <div id="browseStep3" class="browse-container hidden">
-        <div class="card">
-          <h2 id="browsePoolName">Pool</h2>
-          <p class="text-muted mb-2" id="browseProgress">0 / 0 people</p>
-        </div>
-        <div class="profile-card" id="currentProfileCard">
-          <div class="empty-state"><div class="empty-state-icon">&#128101;</div><p>Loading...</p></div>
-        </div>
-        <div class="swipe-buttons">
-          <button class="swipe-btn browse" onclick="handleBrowse('prev')" title="Previous" id="browsePrevBtn">&#8592;</button>
-          <button class="swipe-btn pass" onclick="handleSwipe('pass')" title="Skip">&#10005;</button>
-          <button class="swipe-btn like" onclick="handleSwipe('like')" title="Select">&#10003;</button>
-          <button class="swipe-btn browse" onclick="handleBrowse('next')" title="Next" id="browseNextBtn">&#8594;</button>
-        </div>
-        <div class="selections-summary">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div><span class="selections-count" id="selectionsCount">0</span> <span class="text-muted">selected</span></div>
-            <button class="btn-primary" onclick="goToBrowseStep(4)" id="submitSelectionsBtn" disabled>Submit Selections</button>
-          </div>
-          <div class="selections-list" id="selectionsList"></div>
-        </div>
-        <button class="btn-secondary mt-2" onclick="goToBrowseStep(1)">Leave Pool</button>
-      </div>
-
-      <div id="browseStep4" class="browse-container hidden">
-        <div class="card">
-          <h2>Confirm Your Selections</h2>
-          <div class="privacy-note">
-            <strong>Privacy Guarantee:</strong> Your selections are encrypted.
-            Only mutual matches will be revealed.
-          </div>
-          <p class="mb-2">You have selected <strong id="finalSelectionsCount">0</strong> people:</p>
-          <div id="finalSelectionsList" class="selections-list mb-2"></div>
-          <div class="form-group" style="background:var(--bg-input);padding:1rem;border-radius:0.5rem;border:1px solid var(--border);">
-            <label style="color:var(--accent);font-weight:500;">Contact Info (revealed only to mutual matches)</label>
-            <input type="text" id="revealContactInfo" placeholder="e.g., email@example.com or @twitter_handle" style="margin-bottom:0.5rem;">
-            <textarea id="revealMessage" rows="2" placeholder="Optional message to your matches..." style="margin-bottom:0;"></textarea>
-            <p class="text-sm text-muted mt-1">This will be encrypted and only visible to people who also selected you.</p>
-          </div>
-          <div class="form-group hidden" id="browseInviteCodeSection">
-            <label for="submitInviteCode">Invite Code *</label>
-            <input type="text" id="submitInviteCode" class="input-mono" placeholder="Enter invite code for this pool">
-            <p class="text-sm text-muted mt-1">This pool requires an invite code to submit preferences.</p>
-          </div>
-          <div class="form-group">
-            <label>Your Private Key</label>
-            <input type="password" id="submitPrivateKey" class="input-mono" placeholder="Enter your private key" required>
-          </div>
-          <button id="submitPrefsBtn" class="btn-success btn-lg" style="width:100%;" onclick="submitSelections()">Submit Encrypted Preferences</button>
-          <div id="submitResult" class="hidden mt-2"></div>
-          <button id="submitBackBtn" class="btn-secondary mt-2" onclick="goToBrowseStep(3)">Back</button>
-        </div>
+      <div id="browseParticipatedHint" class="card hidden">
+        <p class="text-sm text-muted">Already submitted to a pool? Check the <a href="#" id="browseGotoDiscover">Discover Matches</a> tab to see your results.</p>
       </div>
     </div>
 
     <!-- Discover Tab -->
-    <div id="discover" class="panel">
+    <div id="discover" class="panel" role="tabpanel" aria-labelledby="tab-discover">
       <div class="grid-2">
         <div class="card">
           <h2>Discover Your Matches</h2>
@@ -253,7 +165,7 @@
     </div>
 
     <!-- Keys Tab -->
-    <div id="keys" class="panel">
+    <div id="keys" class="panel" role="tabpanel" aria-labelledby="tab-keys">
       <div class="card" style="background: var(--gradient-card); border-color: var(--accent);">
         <h2>Pseudonym Rotation</h2>
         <p class="text-muted mb-2">For maximum privacy, use a fresh keypair for each pool. This prevents correlation between your activities across different pools.</p>

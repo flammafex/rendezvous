@@ -6,17 +6,10 @@
 // Import modules
 import './modules/theme.js'; // Auto-initializes on import
 import { fetchStatus } from './modules/api.js';
-import { setFreebirdStatus, browseState } from './modules/state.js';
-import { goToBrowseStep, copyText } from './modules/ui.js';
+import { setFreebirdStatus } from './modules/state.js';
+import { copyText } from './modules/ui.js';
 import { loadPools, loadPoolsForBrowse, initPoolListeners, updateCreatePoolVisibility, joinPool } from './modules/pools.js';
-import {
-  fillFromSavedKey,
-  selectPoolForBrowse,
-  handleSwipe,
-  handleBrowse,
-  submitSelections,
-  initBrowseListeners
-} from './modules/browse.js';
+import { initBrowseListeners, updateParticipatedHint } from './modules/browse.js';
 import { initDiscoverListeners } from './modules/discover.js';
 import {
   handleGenerateKeypair,
@@ -32,21 +25,67 @@ import { showExportKeysModal, showImportKeysModal, initSyncListeners } from './m
 import { initJoinFlow, updateTabVisibility } from './modules/join-flow.js';
 
 /**
- * Initialize tab navigation
+ * Initialize tab navigation with ARIA tablist semantics.
+ *
+ * Implements roving tabindex: only the active tab has tabindex="0", others
+ * have tabindex="-1". Arrow Left/Right moves focus between visible tabs.
+ * aria-selected and aria-hidden are kept in sync on every switch.
  */
 function initTabs() {
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      tab.classList.add('active');
-      document.getElementById(tab.dataset.tab).classList.add('active');
+  const tablist = document.querySelector('[role="tablist"]');
+  if (!tablist) return;
 
-      // Load pools for browse when switching to browse tab
-      if (tab.dataset.tab === 'browse') {
-        loadPoolsForBrowse();
-      }
+  const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+
+  function activateTab(tab) {
+    // Update tab states
+    tabs.forEach(t => {
+      const isActive = t === tab;
+      t.classList.toggle('active', isActive);
+      t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      t.setAttribute('tabindex', isActive ? '0' : '-1');
     });
+
+    // Update panel states
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    const panel = document.getElementById(tab.dataset.tab);
+    if (panel) panel.classList.add('active');
+
+    // Load pools for browse when switching to browse tab
+    if (tab.dataset.tab === 'browse') {
+      loadPoolsForBrowse();
+      updateParticipatedHint();
+    }
+
+    // Move focus to the activated tab (for click + arrow navigation)
+    tab.focus();
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => activateTab(tab));
+  });
+
+  // Arrow-key navigation between tabs (roving tabindex pattern)
+  tablist.addEventListener('keydown', (e) => {
+    const visibleTabs = tabs.filter(t => !t.classList.contains('visitor-hidden') || t.classList.contains('unlocked'));
+    const currentIndex = visibleTabs.indexOf(document.activeElement);
+    if (currentIndex === -1) return;
+
+    let targetIndex = -1;
+    if (e.key === 'ArrowRight') {
+      targetIndex = (currentIndex + 1) % visibleTabs.length;
+    } else if (e.key === 'ArrowLeft') {
+      targetIndex = (currentIndex - 1 + visibleTabs.length) % visibleTabs.length;
+    } else if (e.key === 'Home') {
+      targetIndex = 0;
+    } else if (e.key === 'End') {
+      targetIndex = visibleTabs.length - 1;
+    }
+
+    if (targetIndex >= 0 && visibleTabs[targetIndex]) {
+      e.preventDefault();
+      activateTab(visibleTabs[targetIndex]);
+    }
   });
 }
 
@@ -181,23 +220,6 @@ function handleUrlParams() {
  * These are used in HTML onclick attributes
  */
 function initGlobalHandlers() {
-  // Pool refresh button
-  const refreshBtn = document.querySelector('[onclick="loadPools()"]');
-  if (refreshBtn) {
-    refreshBtn.removeAttribute('onclick');
-    refreshBtn.addEventListener('click', loadPools);
-  }
-
-  // Browse step navigation
-  window.goToBrowseStep = goToBrowseStep;
-
-  // Browse actions
-  window.selectPoolForBrowse = selectPoolForBrowse;
-  window.fillFromSavedKey = fillFromSavedKey;
-  window.handleSwipe = handleSwipe;
-  window.handleBrowse = handleBrowse;
-  window.submitSelections = submitSelections;
-
   // QR actions
   window.startQRScanner = startQRScanner;
 
@@ -217,15 +239,6 @@ function initGlobalHandlers() {
 
   // Delete key (used in dynamic HTML)
   window.deleteKey = deleteKey;
-
-  // Auto-fill private key on step 4
-  const originalGoToBrowseStep = goToBrowseStep;
-  window.goToBrowseStep = function(step) {
-    originalGoToBrowseStep(step);
-    if (step === 4 && browseState.myPrivateKey) {
-      document.getElementById('submitPrivateKey').value = browseState.myPrivateKey;
-    }
-  };
 }
 
 /**
@@ -256,7 +269,6 @@ function init() {
   loadPools();
   loadSavedKeys();
   loadServiceStatus();
-  goToBrowseStep(1);
 
   // Handle URL deep links
   handleUrlParams();

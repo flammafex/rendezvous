@@ -4,7 +4,8 @@
  */
 
 import { escapeHtml, copyText, createModal, showToast } from './ui.js';
-import { selectPoolForBrowse } from './browse.js';
+import { openJoinModal } from './join-flow.js';
+import { fetchPool } from './api.js';
 
 // Store for active QR stream
 let qrStream = null;
@@ -153,26 +154,33 @@ export function stopQRScanner() {
 function handleQRResult(data) {
   stopQRScanner();
 
+  let poolId = null;
   try {
     const url = new URL(data);
-    const poolId = url.searchParams.get('pool');
-    if (poolId) {
-      document.getElementById('browsePoolId').value = poolId;
-      document.querySelector('[data-tab="browse"]').click();
-      selectPoolForBrowse();
-    } else {
-      showToast('Invalid QR code - no pool ID found', 'error');
-    }
+    poolId = url.searchParams.get('pool');
   } catch (e) {
     // Maybe it's just a pool ID directly
     if (data.match(/^[0-9a-f-]{36}$/i)) {
-      document.getElementById('browsePoolId').value = data;
-      document.querySelector('[data-tab="browse"]').click();
-      selectPoolForBrowse();
-    } else {
-      showToast('Invalid QR code format', 'error');
+      poolId = data;
     }
   }
+
+  if (!poolId) {
+    showToast('Invalid QR code - no pool ID found', 'error');
+    return;
+  }
+
+  // Open the Join modal directly with the scanned pool ID
+  (async () => {
+    let poolName = 'Pool';
+    try {
+      const pool = await fetchPool(poolId);
+      poolName = pool.name;
+    } catch (e) {
+      // Pool fetch failed — still try to open the modal with a generic name
+    }
+    openJoinModal(poolId, poolName);
+  })();
 }
 
 /**

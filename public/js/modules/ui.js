@@ -79,9 +79,119 @@ export function showToast(message, type = 'info') {
   });
 }
 
-// === Confirmation modal ===
+// === Modal infrastructure: focus trap + global Escape ===
 
-let confirmEscapeListener = null;
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), ' +
+  'textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Collect focusable elements inside a container, in DOM order.
+ * @param {HTMLElement} container
+ * @returns {HTMLElement[]}
+ */
+function getFocusable(container) {
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR));
+}
+
+/**
+ * Activate a focus trap on a modal element. Tab cycles within the modal;
+ * Shift+Tab on the first element wraps to the last, Tab on the last wraps
+ * to the first. The handler is stored on the element for later removal.
+ *
+ * @param {HTMLElement} modal - The modal element to trap focus within
+ */
+export function activateFocusTrap(modal) {
+  if (!modal) return;
+
+  const handler = (e) => {
+    if (e.key !== 'Tab') return;
+    const focusable = getFocusable(modal);
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === first || !modal.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last || !modal.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
+
+  modal.addEventListener('keydown', handler);
+  modal._focusTrapHandler = handler;
+}
+
+/**
+ * Deactivate a previously-activated focus trap.
+ * @param {HTMLElement} modal
+ */
+export function deactivateFocusTrap(modal) {
+  if (!modal) return;
+  if (modal._focusTrapHandler) {
+    modal.removeEventListener('keydown', modal._focusTrapHandler);
+    delete modal._focusTrapHandler;
+  }
+}
+
+/**
+ * Global Escape handler — closes the topmost open modal.
+ *
+ * Priority order (only the first match is acted on):
+ *   1. .confirm-modal  → calls its stored _dismiss()
+ *   2. .join-modal.active → clicks the close button (which may show a confirm)
+ *   3. .qr-modal → clicks cancel button if present, otherwise removes the modal
+ *
+ * This handler is registered once at module load. showConfirm no longer
+ * registers its own listener; instead it stores _dismiss on the overlay so
+ * this handler can invoke it.
+ */
+function handleModalEscape(e) {
+  if (e.key !== 'Escape') return;
+
+  // Priority 1: confirmation modal (topmost)
+  const confirmModal = document.querySelector('.confirm-modal');
+  if (confirmModal) {
+    e.preventDefault();
+    if (typeof confirmModal._dismiss === 'function') {
+      confirmModal._dismiss();
+    }
+    return;
+  }
+
+  // Priority 2: join modal
+  const joinModal = document.querySelector('.join-modal.active');
+  if (joinModal) {
+    e.preventDefault();
+    const closeBtn = document.getElementById('joinModalClose');
+    if (closeBtn) closeBtn.click();
+    return;
+  }
+
+  // Priority 3: qr-modal (created by createModal)
+  const qrModal = document.querySelector('.qr-modal');
+  if (qrModal) {
+    e.preventDefault();
+    const cancelBtn = qrModal.querySelector('[data-action="cancel"]');
+    if (cancelBtn) {
+      cancelBtn.click();
+    } else {
+      qrModal.remove();
+    }
+    return;
+  }
+}
+
+document.addEventListener('keydown', handleModalEscape);
+
+// === Confirmation modal ===
 
 /**
  * Show an in-app confirmation modal.
@@ -98,12 +208,12 @@ export function showConfirm(title, message, confirmLabel, onConfirm, opts = {}) 
 
   const overlay = document.createElement('div');
   overlay.className = 'confirm-modal';
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-labelledby', 'confirm-title');
 
   const card = document.createElement('div');
   card.className = 'confirm-modal-card';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+  card.setAttribute('aria-labelledby', 'confirm-title');
 
   const titleEl = document.createElement('div');
   titleEl.id = 'confirm-title';
@@ -139,6 +249,9 @@ export function showConfirm(title, message, confirmLabel, onConfirm, opts = {}) 
   // Trigger entrance animation
   requestAnimationFrame(() => overlay.classList.add('confirm-modal-visible'));
 
+  // Activate focus trap on the card
+  activateFocusTrap(card);
+
   let closed = false;
 
   const close = () => {
@@ -146,14 +259,14 @@ export function showConfirm(title, message, confirmLabel, onConfirm, opts = {}) 
     closed = true;
     overlay.classList.remove('confirm-modal-visible');
     overlay.classList.add('confirm-modal-leaving');
-    if (confirmEscapeListener) {
-      document.removeEventListener('keydown', confirmEscapeListener);
-      confirmEscapeListener = null;
-    }
+    deactivateFocusTrap(card);
     setTimeout(() => {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }, 200);
   };
+
+  // Store dismiss on the overlay so the global Escape handler can call it
+  overlay._dismiss = close;
 
   const handleConfirm = () => {
     close();
@@ -171,15 +284,6 @@ export function showConfirm(title, message, confirmLabel, onConfirm, opts = {}) 
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
   });
-
-  // Escape cancels
-  confirmEscapeListener = (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      close();
-    }
-  };
-  document.addEventListener('keydown', confirmEscapeListener);
 
   // Focus the confirm button so Enter works immediately
   confirmBtn.focus();
@@ -230,12 +334,17 @@ export function toggleVisibility(element, show) {
 export function createModal(content) {
   const modal = document.createElement('div');
   modal.className = 'qr-modal';
-  modal.innerHTML = '<div class="qr-modal-content">' + content + '</div>';
+  modal.innerHTML = '<div class="qr-modal-content" role="dialog" aria-modal="true">' + content + '</div>';
+
+  const contentEl = modal.querySelector('.qr-modal-content');
 
   // Close on background click
   modal.addEventListener('click', (e) => {
     if (e.target === modal) modal.remove();
   });
+
+  // Activate focus trap (auto-cleaned when the element is removed from DOM)
+  activateFocusTrap(contentEl);
 
   return modal;
 }

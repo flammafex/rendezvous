@@ -163,8 +163,8 @@ function renderOnboarding() {
       <li>
         <div class="step-marker">4</div>
         <div class="step-body">
-          <strong>Browse and select</strong>
-          <p>Register a profile, browse the others, and select whoever you're interested in.</p>
+          <strong>Join a pool</strong>
+          <p>Register your profile, browse participants, and select whoever you're interested in.</p>
         </div>
       </li>
       <li>

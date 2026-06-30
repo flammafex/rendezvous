@@ -5,8 +5,8 @@
 
 import { fetchPool, fetchParticipants, registerParticipant, getParticipantByKey, submitPreferences } from './api.js';
 import { generateKeypair, deriveMatchToken, deriveNullifier, encryptRevealData } from './crypto.js';
-import { escapeHtml, showToast, showConfirm } from './ui.js';
-import { getSavedKeys, saveKeys, markParticipation, hasParticipated, getDiscoveries, saveDiscoveries } from './state.js';
+import { escapeHtml, showToast, showConfirm, activateFocusTrap, deactivateFocusTrap } from './ui.js';
+import { getSavedKeys, saveKeys, markParticipation, hasParticipated, getParticipatedPools, getDiscoveries, saveDiscoveries } from './state.js';
 
 // Join flow state
 const joinState = {
@@ -51,6 +51,9 @@ function createJoinModal() {
   const modal = document.createElement('div');
   modal.id = 'joinModal';
   modal.className = 'join-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'joinPoolName');
   modal.innerHTML = `
     <div class="join-modal-content">
       <div class="join-modal-header">
@@ -286,7 +289,42 @@ export async function openJoinModal(poolId, poolName) {
     inviteSection.classList.add('hidden');
   }
 
-  // Generate fresh keypair
+  // Check if the user has already participated in this pool. If so, load
+  // their saved key and skip straight to the browse/select step rather than
+  // forcing re-registration.
+  const participated = getParticipatedPools();
+  const participation = participated[poolId];
+  const savedKeys = getSavedKeys();
+  const existingKey = participation && participation.publicKey
+    ? savedKeys.find(k => k.publicKey === participation.publicKey)
+    : null;
+
+  if (existingKey) {
+    // Resume with the existing identity — skip to browse step
+    joinState.publicKey = existingKey.publicKey;
+    joinState.privateKey = existingKey.privateKey;
+
+    // Show modal
+    goToJoinStep(1);
+    document.getElementById('joinModal').classList.add('active');
+    activateFocusTrap(document.getElementById('joinModal'));
+
+    try {
+      document.getElementById('joinContinueStep1').disabled = true;
+      document.getElementById('joinContinueStep1').textContent = 'Loading...';
+      await loadJoinParticipants();
+      document.getElementById('joinContinueStep1').disabled = false;
+      document.getElementById('joinContinueStep1').textContent = 'Continue';
+      goToJoinStep(2);
+    } catch (e) {
+      document.getElementById('joinContinueStep1').disabled = false;
+      document.getElementById('joinContinueStep1').textContent = 'Continue';
+      showToast(e.message, 'error');
+    }
+    return;
+  }
+
+  // Fresh flow: generate a new keypair
   const keypair = generateKeypair();
   joinState.publicKey = keypair.publicKey;
   joinState.privateKey = keypair.privateKey;
@@ -295,7 +333,6 @@ export async function openJoinModal(poolId, poolName) {
   updateIdentityPreview();
 
   // Show existing keys if any
-  const savedKeys = getSavedKeys();
   const existingSection = document.getElementById('joinExistingKeysSection');
   if (savedKeys.length > 0) {
     existingSection.classList.remove('hidden');
@@ -312,6 +349,7 @@ export async function openJoinModal(poolId, poolName) {
   // Show modal
   goToJoinStep(1);
   document.getElementById('joinModal').classList.add('active');
+  activateFocusTrap(document.getElementById('joinModal'));
   document.getElementById('joinDisplayName').focus();
 }
 
@@ -322,6 +360,7 @@ export function closeJoinModal() {
   const modal = document.getElementById('joinModal');
   if (modal) {
     modal.classList.remove('active');
+    deactivateFocusTrap(modal);
   }
   resetJoinState();
 }
@@ -653,6 +692,7 @@ async function handleJoinSubmit() {
 export function unlockAllTabs() {
   document.querySelectorAll('.tab.visitor-hidden').forEach(tab => {
     tab.classList.add('unlocked');
+    tab.setAttribute('aria-hidden', 'false');
   });
   // Dispatch event for main.js to update Create Pool visibility
   window.dispatchEvent(new CustomEvent('participationUnlocked'));
@@ -666,8 +706,10 @@ export function updateTabVisibility() {
   document.querySelectorAll('.tab.visitor-hidden').forEach(tab => {
     if (shouldUnlock) {
       tab.classList.add('unlocked');
+      tab.setAttribute('aria-hidden', 'false');
     } else {
       tab.classList.remove('unlocked');
+      tab.setAttribute('aria-hidden', 'true');
     }
   });
 }
