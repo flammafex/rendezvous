@@ -389,6 +389,14 @@ export class FederationManager extends EventEmitter {
         // Mark as authenticated so we accept identified messages on this socket.
         this.authenticatedSockets.add(ws);
 
+        // M4: Reset retry count on successful connection so the next failure
+        // starts the backoff over from ~1s rather than continuing to climb.
+        for (const [, peer] of this.peers) {
+          if (peer.instance.endpoint === endpoint) {
+            peer.retryCount = 0;
+          }
+        }
+
         // C5: Send handshake with our instance info AND shared secret.
         // The secret proves to the remote peer that we are an authorized
         // federation peer before any identified messages are exchanged.
@@ -415,9 +423,16 @@ export class FederationManager extends EventEmitter {
             peer.connected = false;
             this.peerSockets.delete(instanceId);
             this.emit('peer:disconnected', instanceId);
-            // Attempt reconnect after delay
-            setTimeout(() => this.connectToPeer(endpoint), 5000 * (peer.retryCount + 1));
+            // M4: Exponential backoff with 30s cap + up to 1s jitter to avoid
+            // thundering herd. retryCount is incremented BEFORE scheduling
+            // (per spec); the formula uses (retryCount - 1) so the first retry
+            // lands at ~1s (2^0) rather than ~2s (2^1). After ~5 retries the
+            // base delay stabilizes at the 30s cap.
             peer.retryCount++;
+            const baseDelay = Math.min(30000, 1000 * Math.pow(2, peer.retryCount - 1));
+            const jitter = Math.floor(Math.random() * 1000);
+            const delay = baseDelay + jitter;
+            setTimeout(() => this.connectToPeer(endpoint), delay);
             break;
           }
         }

@@ -87,6 +87,12 @@ export interface RendezvousStore {
   insertPsiResponse(response: PsiResponseRecord): void;
   getPsiResponse(requestId: string): PsiResponseRecord | undefined;
 
+  /**
+   * Delete expired PSI requests and responses.
+   * Returns counts of deleted rows.
+   */
+  cleanupExpiredPsiData(): { requests: number; responses: number };
+
   // Cleanup
   close(): void;
 }
@@ -106,6 +112,11 @@ export class SQLiteStore implements RendezvousStore {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
+    // Wait up to 5s on lock contention before throwing SQLITE_BUSY.
+    // WAL mode allows concurrent readers, but writers still serialize; without
+    // a busy_timeout, a contended write blocks the (synchronous) event loop
+    // and surfaces as an immediate SQLITE_BUSY error.
+    this.db.pragma('busy_timeout = 5000');
     this.initSchema();
   }
 
@@ -612,6 +623,45 @@ export class SQLiteStore implements RendezvousStore {
     return row ? this.rowToPsiResponse(row) : undefined;
   }
 
+  cleanupExpiredPsiData(): { requests: number; responses: number } {
+    // createdAt/expiresAt are stored as numeric ms timestamps (see
+    // insertPsiRequest / insertPsiResponse), so compare against Date.now().
+    const now = Date.now();
+    const oneHourMs = 60 * 60 * 1000;
+
+    // Delete expired responses (expiresAt is set by the owner when the
+    // response is inserted, with a 1-hour TTL).
+    const responsesStmt = this.db.prepare(
+      'DELETE FROM psi_responses WHERE expiresAt < ?',
+    );
+    const responses = responsesStmt.run(now).changes;
+
+    // Delete stale pending requests. Only 'pending' rows are eligible —
+    // 'processing'/'completed'/'expired' rows are retained for auditing.
+    // The 1-hour window matches the response TTL.
+    const requestsStmt = this.db.prepare(
+      "DELETE FROM psi_requests WHERE status = 'pending' AND createdAt < ?",
+    );
+    const requests = requestsStmt.run(now - oneHourMs).changes;
+
+    // Opportunistically checkpoint the WAL while we're doing housekeeping.
+    // The server lane is expected to call checkpointWAL() periodically, but
+    // invoking it here as well keeps the WAL bounded even if the scheduler
+    // is misconfigured. PASSIVE never blocks; it just truncates what it can.
+    this.checkpointWAL();
+
+    return { requests, responses };
+  }
+
+  /**
+   * Run a passive WAL checkpoint to truncate the WAL file.
+   * Call periodically to prevent unbounded WAL growth. PASSIVE mode
+   * checkpoints as much as possible without blocking readers/writers.
+   */
+  checkpointWAL(): void {
+    this.db.pragma('wal_checkpoint(PASSIVE)');
+  }
+
   close(): void {
     this.db.close();
   }
@@ -1053,6 +1103,31 @@ export class InMemoryStore implements RendezvousStore {
   getPsiResponse(requestId: string): PsiResponseRecord | undefined {
     const response = this.psiResponses.get(requestId);
     return response ? { ...response } : undefined;
+  }
+
+  cleanupExpiredPsiData(): { requests: number; responses: number } {
+    const now = Date.now();
+    const oneHourMs = 60 * 60 * 1000;
+
+    // Remove expired responses.
+    let responses = 0;
+    for (const [id, response] of this.psiResponses) {
+      if (response.expiresAt < now) {
+        this.psiResponses.delete(id);
+        responses++;
+      }
+    }
+
+    // Remove stale pending requests (matches SQLiteStore's 1-hour window).
+    let requests = 0;
+    for (const [id, request] of this.psiRequests) {
+      if (request.status === 'pending' && request.createdAt < now - oneHourMs) {
+        this.psiRequests.delete(id);
+        requests++;
+      }
+    }
+
+    return { requests, responses };
   }
 
   close(): void {

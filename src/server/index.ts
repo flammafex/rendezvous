@@ -47,6 +47,21 @@ import type {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ============================================================================
+// PII redaction helper (M7)
+// ============================================================================
+//
+// Logs throughout the server may include PII (displayName, publicKey,
+// nullifier, bio, avatarUrl). This helper truncates such values so the log
+// retains enough context to debug (first/last 4 chars) without exposing the
+// full value. Pool IDs, counts, timestamps, status codes, and error messages
+// are NOT considered PII and are logged in full.
+function redact(value: unknown): string {
+  if (typeof value !== 'string') return String(value);
+  if (value.length <= 8) return '***';
+  return value.slice(0, 4) + '***' + value.slice(-4);
+}
+
 // Configuration from environment variables
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const DATA_DIR = process.env.RENDEZVOUS_DATA_DIR || './data';
@@ -106,6 +121,10 @@ if (WITNESS_GATEWAY_URL) {
 
 // Initialize Rendezvous with configuration
 const rv = createRendezvous(config);
+
+// Track pools being processed (close + match computation) to avoid duplicate
+// work between manual close, auto-close scheduler, and startup recovery.
+const poolsBeingClosed = new Set<string>();
 
 // ============================================================================
 // Federation Configuration
@@ -226,7 +245,7 @@ if (FEDERATION_ENABLED) {
           displayName: payload.displayName,
           bio: payload.bio,
         });
-        console.log(`Registered participant ${payload.displayName} in pool ${request.poolId}`);
+        console.log(`Registered participant ${redact(payload.displayName)} (key ${redact(request.publicKey)}) in pool ${request.poolId}`);
       }
     } catch (err) {
       console.error('Failed to process join request:', err);
@@ -354,6 +373,21 @@ interface ApiError extends Error {
 }
 
 // ============================================================================
+// Input length validation (M2)
+// ============================================================================
+//
+// Bounds user-supplied text fields to prevent abuse (storage bloat, log
+// flooding, DoS via oversized payloads). Returns an error message string
+// when the value is present but exceeds the max length, otherwise null.
+// Non-string values pass through (type/format validation happens elsewhere).
+function validateLength(value: unknown, max: number, field: string): string | null {
+  if (typeof value === 'string' && value.length > max) {
+    return `${field} too long (max ${max} chars)`;
+  }
+  return null;
+}
+
+// ============================================================================
 // API Routes
 // ============================================================================
 
@@ -443,6 +477,15 @@ app.post('/api/pools', createPoolLimiter, async (req: Request, res: Response, ne
     }
     if (!isValidPublicKey(creatorPublicKey)) {
       res.status(400).json({ error: 'Invalid creatorPublicKey' });
+      return;
+    }
+
+    // Field length validation (M2)
+    const lengthError =
+      validateLength(name, 200, 'name') ||
+      validateLength(description, 2000, 'description');
+    if (lengthError) {
+      res.status(400).json({ error: lengthError });
       return;
     }
 
@@ -588,6 +631,12 @@ app.post('/api/pools/:id/close', async (req: Request, res: Response, next: NextF
       return;
     }
 
+    // Dedup against in-flight auto-close / recovery processing (M3)
+    if (poolsBeingClosed.has(poolToClose.id)) {
+      res.status(409).json({ error: 'Pool close already in progress' });
+      return;
+    }
+
     // Verify owner signature
     const authError = verifyOwnerSignature(
       poolToClose,
@@ -680,6 +729,16 @@ app.post('/api/pools/:id/participants', async (req: Request, res: Response, next
     }
     if (!isValidPublicKey(publicKey)) {
       res.status(400).json({ error: 'Invalid publicKey' });
+      return;
+    }
+
+    // Field length validation (M2)
+    const lengthError =
+      validateLength(displayName, 100, 'displayName') ||
+      validateLength(bio, 5000, 'bio') ||
+      validateLength(avatarUrl, 2000, 'avatarUrl');
+    if (lengthError) {
+      res.status(400).json({ error: lengthError });
       return;
     }
 
@@ -1783,11 +1842,20 @@ app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
 // Auto-Close Scheduler (Privacy Delay)
 // ----------------------------------------------------------------------------
 
-// Track pools being processed to avoid duplicate closes
-const poolsBeingClosed = new Set<string>();
-
 // Check for pools past reveal deadline and close them with privacy delay
 async function checkAndCloseExpiredPools(): Promise<void> {
+  // Periodic PSI data cleanup (M5). Runs alongside the auto-close scheduler
+  // (every 60s). Wrapped in try/catch so a cleanup failure doesn't break
+  // the scheduler's primary close/detect loop.
+  try {
+    const cleaned = rv.store.cleanupExpiredPsiData();
+    if (cleaned.requests > 0 || cleaned.responses > 0) {
+      console.log(`PSI cleanup: removed ${cleaned.requests} expired request(s), ${cleaned.responses} expired response(s)`);
+    }
+  } catch (err) {
+    console.error('PSI cleanup failed:', err);
+  }
+
   const pools = rv.listPools({ status: 'open' }).concat(rv.listPools({ status: 'reveal' }));
   const now = new Date();
 
@@ -1826,6 +1894,8 @@ async function checkAndCloseExpiredPools(): Promise<void> {
 
 // Run scheduler every minute
 let autoCloseInterval: ReturnType<typeof setInterval>;
+// HTTP server handle, stored so signal handlers can close it gracefully (M1).
+let server: ReturnType<typeof app.listen>;
 
 // ----------------------------------------------------------------------------
 // Startup Recovery: re-enqueue match computation for stuck 'closed' pools
@@ -1878,7 +1948,7 @@ function recoverStuckClosedPools(): void {
   }
 }
 
-app.listen(PORT, async () => {
+server = app.listen(PORT, async () => {
   console.log(`Rendezvous server running at http://localhost:${PORT}`);
   console.log(`API available at http://localhost:${PORT}/api`);
   console.log(`Web UI available at http://localhost:${PORT}`);
@@ -1897,25 +1967,42 @@ app.listen(PORT, async () => {
   }
 });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\nShutting down...');
+// Graceful shutdown (M1): stop accepting new connections, drain in-flight
+// requests, then close the DB. Without server.close(), in-flight requests
+// are killed abruptly and rv.close() can close the SQLite DB while a
+// request is still using it.
+async function gracefulShutdown(signal: string): Promise<void> {
+  console.log(`\nShutting down gracefully (received ${signal})...`);
   clearInterval(autoCloseInterval);
+
+  // Stop accepting new connections and drain keep-alive sockets.
+  // closeAllConnections() (Node 18.2+) closes idle keep-alive connections;
+  // server.close() waits for in-flight requests to finish.
+  const httpServer = server;
+  if (httpServer) {
+    try {
+      httpServer.closeAllConnections();
+    } catch (err) {
+      console.error('Error closing connections:', err);
+    }
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => resolve());
+    });
+  }
+
   if (federation) {
     await federation.stop();
   }
   rv.close();
   process.exit(0);
+}
+
+process.on('SIGINT', () => {
+  void gracefulShutdown('SIGINT');
 });
 
-process.on('SIGTERM', async () => {
-  console.log('\nShutting down...');
-  clearInterval(autoCloseInterval);
-  if (federation) {
-    await federation.stop();
-  }
-  rv.close();
-  process.exit(0);
+process.on('SIGTERM', () => {
+  void gracefulShutdown('SIGTERM');
 });
 
 export { app, rv };
