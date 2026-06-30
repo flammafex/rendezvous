@@ -6,14 +6,21 @@ Guidance for Codex / AI coding agents working in this repository. Read this befo
 
 Rendezvous is a privacy-preserving mutual-matching platform: two parties discover they mutually
 selected each other via Diffie-Hellman-derived match tokens, without revealing unilateral selections.
-It is the application layer of a sibling-repo ecosystem ("Sophia v1"): `matchlock` owns all crypto/PSI,
-`sophiados` owns contract test vectors + external services, `rendezvous` is the app/server/UI.
+It is the application layer of the Sophia v1 ecosystem: `sophiados` (sibling repo) owns contract
+test vectors + external services. Crypto/PSI primitives live in `src/matchlock/` (formerly a separate
+repo, now reintegrated). The canonical protocol spec is `docs/PROTOCOL.md`.
 
 ## Repo layout
 
 ```
 src/
   index.ts                 # package entry; re-exports src/rendezvous/index.ts
+  matchlock/               # crypto/PSI primitives (formerly a separate repo)
+    index.ts               # matchlock public API
+    types.ts               # branded types: PublicKey, PrivateKey, MatchToken, etc.
+    errors.ts              # MatchlockError, InvalidKeyError, etc.
+    dh/                    # DH token derivation, commit, nullifier, ECIES, signing
+    psi/                   # PSI service + types (wraps @openmined/psi.js)
   rendezvous/
     index.ts               # Rendezvous class — the public API facade
     types.ts               # core domain types (imports PublicKey/MatchToken/etc from matchlock)
@@ -31,24 +38,26 @@ src/
     manager.ts             # CRDT sync (Automerge) over WebSocket; anonymous Freebird messaging
     freebird-client.ts     # anonymous auth tokens
     types.ts
-  server/index.ts          # Express REST API + WebSocket + auto-close scheduler (1681 lines)
+  server/index.ts          # Express REST API + WebSocket + auto-close scheduler
   cli/index.ts             # commander-based CLI
   scripts/seed.ts          # demo data seeder
+crates/
+  matchlock-core/          # Rust crate (parallel implementation, KAT conformance)
 public/                     # static web UI (vanilla JS, PWA)
   js/modules/               # api, browse, crypto, discover, pools, keys, qr, state, sync, theme, ui
   sw.js, manifest.json
-test/                       # jest (ESM): rendezvous, crypto, contract-matchlock-vectors, live-services
-docs/                       # ANONYMOUS_FEDERATION_TOKENS.md, PSI_INTEGRATION.md, superpowers/{specs,plans}/
-.forgejo/workflows/ci.yml   # CI: build + test on Node 20
+test/                       # jest (ESM): rendezvous, crypto, matchlock/*, contract vectors, live-services
+examples/                   # mutual-match.ts demo
+docs/                       # PROTOCOL.md, SECURITY.md, ANONYMOUS_FEDERATION_TOKENS.md, PSI_INTEGRATION.md
+.forgejo/workflows/ci.yml   # CI: build + test (Node) + cargo test (Rust)
 ```
 
 ## Setup
 
-Requires Node.js >= 20 and the sibling `../matchlock` repo present (declared as `"matchlock": "file:../matchlock"`).
-`matchlock` must be built (`dist/` present) before rendezvous can build.
+Requires Node.js >= 20. Matchlock is now integrated into `src/matchlock/` (no sibling repo needed).
 
 ```bash
-npm install        # will fail if ../matchlock is missing
+npm install        # no external matchlock dependency
 npm run build      # tsc -> dist/
 ```
 
@@ -60,10 +69,12 @@ npm run dev             # tsc --watch
 npm run server          # node dist/server/index.js  (HTTP :3000, federation WS :3001 if enabled)
 npm run seed            # seed demo pools; prints a test keypair for guaranteed matches
 npm run cli             # CLI entrypoint
-npm test                # jest ESM via --experimental-vm-modules (43 tests, 3 suites)
+npm test                # jest ESM via --experimental-vm-modules (153 tests, 11 suites)
 npm run test:contracts  # sophia/v1 KAT conformance — REQUIRES ../sophiados present
 npm run test:live       # live Freebird+Witness seam; not in default testMatch; needs services running
+npm run test:rust       # cargo test for the Rust matchlock-core crate
 npm run test:watch
+npm run example         # run the mutual-match demo
 npm run clean           # rm -rf dist data
 ```
 
@@ -78,7 +89,7 @@ restoring the toolchain. CI does not run lint.
 - **Always use `.js` extensions in relative imports** even for `.ts` sources (NodeNext requirement):
   `from './storage.js'`, not `from './storage'`.
 - **Facade pattern for crypto/PSI:** `src/rendezvous/crypto.ts` and `src/psi/service.ts` only re-export
-  `matchlock`. Never implement crypto here — add it to `matchlock` and re-export.
+  `src/matchlock/`. Never implement crypto here — add it to `src/matchlock/` and re-export.
 - **Storage:** `RendezvousStore` interface with two impls (`SQLiteStore` for prod, `InMemoryStore` for
   tests). New persistence needs go through the interface and both impls.
 - **Manager classes** (`PoolManager`, `SubmissionManager`, `MatchDetector`, `GateSystem`) are wired in
@@ -99,7 +110,8 @@ restoring the toolchain. CI does not run lint.
 
 ## Testing expectations
 
-- Default `npm test` runs: `crypto.test.ts`, `rendezvous.test.ts`, `contract-matchlock-vectors.test.ts`.
+- Default `npm test` runs: `crypto.test.ts`, `rendezvous.test.ts`, `contract-matchlock-vectors.test.ts`,
+  and `matchlock/**` tests (dh, ecies, commit, nullifier, signing, validate, psi, errors).
 - Tests are **library-layer only** — they exercise the `Rendezvous` class via `createTestRendezvous()`
   (in-memory store). There are **no HTTP/server tests**; the Express layer, padding middleware,
   fail-closed logic, and auto-close scheduler are untested.
@@ -113,7 +125,7 @@ restoring the toolchain. CI does not run lint.
 
 - Keep changes minimal and focused. Don't refactor unrelated code in the same PR.
 - `npm run build && npm test` must pass before requesting review (CI runs the same).
-- If your change touches crypto behavior, it likely belongs in `matchlock`, not here — flag this in the
+- If your change touches crypto behavior, it likely belongs in `src/matchlock/`, not here — flag this in the
   PR description and confirm the contract KAT vectors still pass.
 - If your change touches privacy invariants (decoys, padding, delays, fail-closed checks), call out the
   threat model in the PR description and add/adjust a test.
@@ -122,13 +134,15 @@ restoring the toolchain. CI does not run lint.
 
 ## Constraints — do not touch without asking
 
-1. **`matchlock` dependency** (`"file:../matchlock"`): do not change to a published version or alter
-  the symlink without explicit instruction. Changes to crypto belong in matchlock, not rendezvous.
+1. **`src/matchlock/`** crypto primitives: do not change to a published version or split out without
+  explicit instruction. Changes to crypto belong in `src/matchlock/`, not in `src/rendezvous/`.
+  The canonical protocol spec is `docs/PROTOCOL.md` — changes to domain separators, hash input
+  ordering, or ECIES structure are wire-compat breaks.
 2. **Privacy invariants** listed above — changing decoy counts, padding size, delay ranges, or fail-closed
   behavior can break the threat model. Ask first.
 3. **`src/rendezvous/crypto.ts`** is a re-export facade only. Do not add logic here.
 4. **Contract vectors** (`../sophiados/contracts/`) are owned by another repo. Do not edit or vendor them.
-5. **`src/server/index.ts`** is 1681 lines and central. Splitting it is reasonable but should be a
+5. **`src/server/index.ts`** is central and large. Splitting it is reasonable but should be a
   dedicated, reviewed PR — don't opportunistically split while doing unrelated work.
 6. **Environment / external services:** Freebird, Witness, and federation require live services and env
   vars (see README). Don't hardcode service URLs; use the existing env-var pattern.
@@ -146,3 +160,4 @@ A change is complete when all of these hold:
 - [ ] No secrets, `data/`, `dist/`, or `.env` files are committed.
 - [ ] README/docs updated if user-facing behavior or commands changed.
 - [ ] If the change depends on `matchlock` or `sophiados`, that dependency is noted in the PR description.
+      (`matchlock` is now in `src/matchlock/`; `sophiados` remains a sibling repo for contract vectors.)

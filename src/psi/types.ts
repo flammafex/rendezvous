@@ -15,7 +15,7 @@ export type {
   OwnerPsiProcessingResult,
   CreatePsiSetupRequest,
   PsiClientSession,
-} from 'matchlock';
+} from '../matchlock/index.js';
 
 /** PSI join request from a client */
 export interface PsiJoinRequest {

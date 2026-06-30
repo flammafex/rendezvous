@@ -15,6 +15,7 @@ import {
   deriveMatchTokens,
   deriveNullifier,
 } from '../src/rendezvous/index.js';
+import type { PrivateKey, PublicKey, MatchToken } from '../src/matchlock/types.js';
 
 interface MatchlockVectors {
   contract_version: string;
@@ -56,17 +57,17 @@ describe('Sophia contract: Rendezvous Matchlock vectors', () => {
   it('derives the canonical mutual match token in both directions', () => {
     const { alice_priv, alice_pub, bob_priv, bob_pub, pool_id, token } = vectors.token_derivation;
 
-    expect(deriveMatchToken(alice_priv, bob_pub, pool_id)).toBe(token);
-    expect(deriveMatchToken(bob_priv, alice_pub, pool_id)).toBe(token);
-    expect(deriveMatchTokens(alice_priv, [bob_pub], pool_id)).toEqual([token]);
+    expect(deriveMatchToken(alice_priv as PrivateKey, bob_pub as PublicKey, pool_id)).toBe(token);
+    expect(deriveMatchToken(bob_priv as PrivateKey, alice_pub as PublicKey, pool_id)).toBe(token);
+    expect(deriveMatchTokens(alice_priv as PrivateKey, [bob_pub as PublicKey], pool_id)).toEqual([token]);
   });
 
   it('commits to raw token bytes, not the token hex string', () => {
-    expect(commitToken(vectors.commitment.token_bytes)).toBe(vectors.commitment.commitment);
+    expect(commitToken(vectors.commitment.token_bytes as MatchToken)).toBe(vectors.commitment.commitment);
   });
 
   it('derives the canonical pool-scoped nullifier', () => {
-    expect(deriveNullifier(vectors.nullifier.priv_key, vectors.nullifier.pool_id)).toBe(
+    expect(deriveNullifier(vectors.nullifier.priv_key as PrivateKey, vectors.nullifier.pool_id)).toBe(
       vectors.nullifier.nullifier,
     );
   });

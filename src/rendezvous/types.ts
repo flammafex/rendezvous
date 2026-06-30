@@ -7,7 +7,7 @@
 // Basic Types
 // ============================================================================
 
-import type { PublicKey, PrivateKey, MatchToken, CommitHash } from 'matchlock';
+import type { PublicKey, PrivateKey, MatchToken, CommitHash } from '../matchlock/index.js';
 export type { PublicKey, PrivateKey, MatchToken, CommitHash };
 
 /** Pool status throughout its lifecycle */

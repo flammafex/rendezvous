@@ -7,6 +7,13 @@ on:
     branches: [main]
 
 jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Rust crate
+        run: cargo test -p matchlock-core
+
   test:
     runs-on: ubuntu-latest
 

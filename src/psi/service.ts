@@ -5,7 +5,7 @@
  * service wrapper so existing imports continue to work.
  */
 
-import { PsiService as MatchlockPsiService } from 'matchlock';
+import { PsiService as MatchlockPsiService } from '../matchlock/index.js';
 
 export class PsiService extends MatchlockPsiService {}
 

@@ -1,0 +1,26 @@
+[package]
+name = "matchlock-core"
+version = "0.1.0"
+edition = "2021"
+description = "Privacy-preserving mutual match cryptographic primitives"
+license = "Apache-2.0"
+repository = "https://git.carpocratian.org/sibyl/matchlock"
+homepage = "https://git.carpocratian.org/sibyl/matchlock"
+documentation = "https://docs.rs/matchlock-core"
+
+[dependencies]
+x25519-dalek = { version = "2", features = ["zeroize"] }
+ed25519-dalek = { version = "2", features = ["zeroize", "rand_core"] }
+sha2 = "0.10"
+hkdf = "0.12"
+chacha20poly1305 = "0.10"
+zeroize = { version = "1", features = ["derive"] }
+subtle = "2"
+rand_core = { version = "0.6", features = ["getrandom"] }
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[dev-dependencies]
+x25519-dalek = { version = "2", features = ["zeroize"] }

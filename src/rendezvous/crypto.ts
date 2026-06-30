@@ -32,11 +32,11 @@ export {
   verifySignedRequest,
   isValidSigningPublicKey,
   isValidSignature,
-} from 'matchlock';
+} from '../matchlock/index.js';
 
 export type {
   EncryptedBox,
   SigningPublicKey,
   SigningPrivateKey,
   Signature,
-} from 'matchlock';
+} from '../matchlock/index.js';

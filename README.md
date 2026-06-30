@@ -64,7 +64,7 @@ npm install
 npm run build
 ```
 
-Requires Node.js 20+.
+Requires Node.js 20+. Matchlock crypto primitives are integrated into `src/matchlock/` (no sibling repo needed).
 
 ## Quick Start
 
