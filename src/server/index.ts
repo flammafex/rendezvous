@@ -272,16 +272,30 @@ process.on('uncaughtException', (err) => {
 
 // Middleware
 // Security headers via helmet. The vanilla-JS PWA in public/ uses inline
-// scripts, so the default CSP would break the UI; we relax script-src to
-// allow 'self' and 'unsafe-inline'. This is a deliberate tradeoff: the UI
-// is a trusted first-party PWA, and tightening further would require
-// refactoring all inline scripts to external files with nonces/SRI.
+// scripts and loads crypto/QR libraries from CDNs, so the default CSP would
+// break the UI. This is a deliberate tradeoff: the UI is a trusted first-party
+// PWA, and tightening further would require vendoring all CDN deps and
+// refactoring inline handlers to use addEventListener with nonces/SRI.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.jsdelivr.net',  // qrcode-generator, jsQR
+        'https://esm.run',           // @noble/curves, @noble/hashes
+      ],
+      scriptSrcElem: [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.jsdelivr.net',
+        'https://esm.run',
+      ],
+      scriptSrcAttr: ["'unsafe-inline'"],  // inline onclick handlers
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      styleSrcElem: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:'],
       connectSrc: ["'self'", 'ws:', 'wss:'],
     },
