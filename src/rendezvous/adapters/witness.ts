@@ -5,12 +5,12 @@
  * Witness provides cryptographic proof that data existed at a specific time.
  *
  * API endpoints:
- * - POST /v1/timestamp - Submit hash for timestamping (optional Freebird token)
- * - GET /v1/timestamp/:hash - Retrieve existing timestamp
+ * - POST /v1/attestations - Create an attestation job (optional Freebird token)
+ * - GET /v1/attestations/:hash - Poll attestation job status
  * - POST /v1/verify - Verify attestation
  * - GET /v1/config - Get network configuration
  *
- * Updated for Witness API as of Dec 2025 (BLS aggregation, Freebird auth).
+ * Updated for Witness API v0.7.0 (async attestation job model, Freebird auth).
  */
 
 import { WitnessAdapter } from '../gates/types.js';
@@ -32,9 +32,6 @@ export interface WitnessConfig {
 /** Freebird token for Witness authentication */
 interface FreebirdTokenPayload {
   token_b64: string;
-  issuer_id: string;
-  exp: number;
-  epoch: number;
 }
 
 /** Witness attestation structure */
@@ -59,13 +56,17 @@ interface AggregatedSignatures {
   signers: string[];
 }
 
-/** Response from POST /v1/timestamp */
-interface TimestampResponse {
-  attestation: {
+/** Response from POST /v1/attestations and GET /v1/attestations/:hash */
+interface AttestationJobResponse {
+  attestation: WitnessAttestation;
+  status: 'pending' | 'retryable' | 'confirmed' | 'failed';
+  signed_attestation?: {
     attestation: WitnessAttestation;
     signatures: MultiSigSignatures | AggregatedSignatures;
   };
-  status?: 'confirmed' | 'pending' | 'rejected';
+  attempts?: number;
+  next_attempt_at?: number;
+  last_error?: string | null;
 }
 
 /** Response from POST /v1/verify */
@@ -129,7 +130,7 @@ function normalizeSignatureSet(signatures: MultiSigSignatures | AggregatedSignat
   };
 }
 
-function normalizeSignedAttestation(raw: TimestampResponse['attestation'] | SophiaWitnessSignedAttestation): SophiaWitnessSignedAttestation {
+function normalizeSignedAttestation(raw: NonNullable<AttestationJobResponse['signed_attestation']> | SophiaWitnessSignedAttestation): SophiaWitnessSignedAttestation {
   const attestation = raw.attestation;
   return {
     contract_version: CONTRACT_VERSION,
@@ -144,7 +145,7 @@ function normalizeSignedAttestation(raw: TimestampResponse['attestation'] | Soph
   };
 }
 
-function toWireSignedAttestation(canonical: SophiaWitnessSignedAttestation): TimestampResponse['attestation'] {
+function toWireSignedAttestation(canonical: SophiaWitnessSignedAttestation): AttestationJobResponse['signed_attestation'] {
   const signatures = canonical.signatures.kind === 'multisig'
     ? {
         signatures: canonical.signatures.signatures.map(signature => ({
@@ -179,34 +180,66 @@ export class HttpWitnessAdapter implements WitnessAdapter {
   /**
    * Request timestamp attestation for a hash.
    *
+   * Creates an attestation job and polls until it is confirmed or fails.
+   *
    * @param data - Hex-encoded SHA-256 hash to timestamp
    * @param freebirdProof - Optional Freebird token for Sybil resistance
    */
   async attest(data: string, freebirdProof?: FreebirdProof): Promise<WitnessProof> {
+    const pollIntervalMs = 500;
+    const pollTimeoutMs = 30000;
+
+    // Build request body
+    const body: { hash: string; freebird_token?: FreebirdTokenPayload } = { hash: data };
+
+    if (freebirdProof) {
+      body.freebird_token = {
+        token_b64: freebirdProof.tokenValue,
+      };
+    }
+
+    const postResponse = await this.request('/v1/attestations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    let result = postResponse as AttestationJobResponse;
+
+    // Async job model: poll until confirmed or failed.
+    if (result.status === 'pending' || result.status === 'retryable') {
+      const deadline = Date.now() + pollTimeoutMs;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        result = await this.request(`/v1/attestations/${data}`, { method: 'GET' }) as AttestationJobResponse;
+        if (result.status === 'confirmed' || result.status === 'failed') {
+          break;
+        }
+      }
+    }
+
+    if (result.status === 'failed') {
+      throw new Error(`Witness attestation failed: ${result.last_error ?? 'unknown error'}`);
+    }
+
+    if (result.status !== 'confirmed' || !result.signed_attestation) {
+      throw new Error('Witness attestation timed out waiting for confirmation');
+    }
+
+    return this.toWitnessProof(normalizeSignedAttestation(result.signed_attestation));
+  }
+
+  /**
+   * Perform an HTTP request against the Witness gateway, handling auth errors.
+   */
+  private async request(path: string, init: { method: 'POST' | 'GET'; body?: string }): Promise<unknown> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      // Build request body
-      const body: { hash: string; freebird_token?: FreebirdTokenPayload } = { hash: data };
-
-      if (freebirdProof) {
-        if (freebirdProof.epoch === undefined) {
-          throw new Error('Freebird token epoch required for Witness authentication');
-        }
-
-        body.freebird_token = {
-          token_b64: freebirdProof.tokenValue,
-          issuer_id: freebirdProof.issuerId,
-          exp: Math.floor(freebirdProof.expiration / 1000), // Convert ms to seconds
-          epoch: freebirdProof.epoch,
-        };
-      }
-
-      const response = await fetch(`${this.gatewayUrl}/v1/timestamp`, {
-        method: 'POST',
+      const response = await fetch(`${this.gatewayUrl}${path}`, {
+        method: init.method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: init.body,
         signal: controller.signal,
       });
 
@@ -222,8 +255,7 @@ export class HttpWitnessAdapter implements WitnessAdapter {
         throw new Error(`Witness attestation failed: ${status}`);
       }
 
-      const result = await response.json() as TimestampResponse;
-      return this.toWitnessProof(normalizeSignedAttestation(result.attestation));
+      return await response.json();
     } catch (error) {
       clearTimeout(timeoutId);
       throw new Error(`Witness attestation error: ${error}`);

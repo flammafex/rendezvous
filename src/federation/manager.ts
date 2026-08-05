@@ -166,8 +166,8 @@ export class FederationManager extends EventEmitter {
    * Announce a pool to the federation
    */
   announcePool(pool: FederatedPoolMetadata): void {
-    // Update local CRDT state
-    this.doc = Automerge.change(this.doc, 'Announce pool', (doc) => {
+    // Update local CRDT state via the dispatch engine (local origin)
+    this.dispatchChange('Announce pool', this.config.instance.id, (doc) => {
       doc.pools[pool.poolId] = pool;
     });
 
@@ -181,9 +181,6 @@ export class FederationManager extends EventEmitter {
     };
     this.broadcastMessage(message);
 
-    // Sync CRDT state
-    this.syncAllPeers();
-
     this.emit('pool:announced', pool);
   }
 
@@ -191,13 +188,12 @@ export class FederationManager extends EventEmitter {
    * Update pool metadata in federation
    */
   updatePool(poolId: string, updates: Partial<FederatedPoolMetadata>): void {
-    this.doc = Automerge.change(this.doc, 'Update pool', (doc) => {
+    // Update local CRDT state via the dispatch engine (local origin)
+    this.dispatchChange('Update pool', this.config.instance.id, (doc) => {
       if (doc.pools[poolId]) {
         Object.assign(doc.pools[poolId], updates, { updatedAt: Date.now() });
       }
     });
-
-    this.syncAllPeers();
 
     const pool = this.doc.pools[poolId];
     if (pool) {
@@ -642,8 +638,9 @@ export class FederationManager extends EventEmitter {
   }
 
   private handlePoolAnnounce(msg: PoolAnnounceMessage): void {
-    // Update CRDT with new pool
-    this.doc = Automerge.change(this.doc, 'Pool announced', (doc) => {
+    // Update CRDT with new pool via the dispatch engine (remote origin:
+    // source is the peer that sent it, so we skip syncing back to them).
+    this.dispatchChange('Pool announced', msg.from, (doc) => {
       doc.pools[msg.pool.poolId] = msg.pool;
     });
 
@@ -685,14 +682,40 @@ export class FederationManager extends EventEmitter {
   }
 
   private syncAllPeers(): void {
+    this.syncAllPeersExcept(undefined);
+  }
+
+  /**
+   * Sync with all connected peers EXCEPT the given instance id.
+   * Used for echo suppression: when a change originates from a peer, we
+   * propagate it to every other peer but skip the originator to avoid
+   * redundant syncs / echo.
+   */
+  private syncAllPeersExcept(excludeInstanceId?: string): void {
     for (const [instanceId, peer] of this.peers) {
-      if (peer.connected) {
+      if (peer.connected && instanceId !== excludeInstanceId) {
         this.syncWithPeer(instanceId).catch(err => {
           console.error(`Failed to sync with peer ${instanceId}:`, err);
         });
       }
     }
     this.emit('state:changed', this.doc);
+  }
+
+  /**
+   * Dispatch engine: route all CRDT mutations through a single method that
+   * wraps `Automerge.change` with a `source` tag, emits the state change, and
+   * propagates to all peers EXCEPT the source (echo suppression).
+   */
+  private dispatchChange(
+    description: string,
+    source: string,
+    mutate: (doc: FederationState) => void
+  ): void {
+    this.doc = Automerge.change(this.doc, description, mutate);
+    this.emit('state:changed', this.doc);
+    // Echo suppression: propagate to all peers EXCEPT the source
+    this.syncAllPeersExcept(source);
   }
 
   private async broadcastMessage(message: FederationMessage): Promise<void> {

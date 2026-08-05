@@ -3,7 +3,15 @@
  *
  * Provides anonymous authorization tokens using Freebird's VOPRF protocol.
  * Tokens prove authorization without revealing identity.
+ *
+ * This implementation wraps the vendored Freebird SDK
+ * (vendor/freebird-sdk) for client-side VOPRF token issuance, replacing the
+ * removed server-side "simple" endpoints (/v1/token/simple and
+ * /v1/oprf/issue-simple) with the SDK's real VOPRF blind-issue-unblind flow.
  */
+
+import { FreebirdClient as SdkFreebirdClient } from '../vendor/freebird-sdk/src/index.js';
+import type { FreebirdToken as SdkFreebirdToken } from '../vendor/freebird-sdk/src/types.js';
 
 /**
  * Issuer metadata from /.well-known/issuer
@@ -14,29 +22,7 @@ interface IssuerMetadata {
     suite: string;
     kid: string;
     pubkey: string;
-    exp_sec: number;
   };
-  current_epoch: number;
-}
-
-/**
- * Token issuance response
- */
-interface IssueResponse {
-  token: string;
-  proof: string;
-  kid: string;
-  exp: number;
-  epoch: number;
-}
-
-/**
- * Token verification response
- */
-interface VerifyResponse {
-  ok: boolean;
-  error?: string;
-  verified_at: number;
 }
 
 /**
@@ -73,14 +59,17 @@ export interface SerializedFreebirdToken {
  * Freebird client for anonymous token operations
  */
 export class FreebirdClient {
+  private sdk: SdkFreebirdClient;
   private issuerUrl: string;
-  private verifierUrl: string;
   private metadata: IssuerMetadata | null = null;
   private metadataExpiry: number = 0;
 
   constructor(config: { issuerUrl: string; verifierUrl?: string }) {
     this.issuerUrl = config.issuerUrl.replace(/\/$/, '');
-    this.verifierUrl = config.verifierUrl?.replace(/\/$/, '') || this.issuerUrl;
+    // The SDK requires a verifier scope; default to the issuer URL like the
+    // previous implementation did.
+    const verifierUrl = config.verifierUrl?.replace(/\/$/, '') || this.issuerUrl;
+    this.sdk = new SdkFreebirdClient({ issuerUrl: this.issuerUrl, verifierUrl });
   }
 
   /**
@@ -104,78 +93,30 @@ export class FreebirdClient {
   }
 
   /**
-   * Request a new anonymous token
+   * Request a new anonymous token.
    *
-   * Note: This simplified implementation calls the issuer's token endpoint directly.
-   * For maximum privacy (issuer can't link request to token), client-side VOPRF
-   * blinding should be implemented. This can be added later with a WASM binding
-   * or pure JS P-256 implementation.
+   * Uses the vendored SDK's client-side VOPRF issuance for unlinkability
+   * (the issuer never sees the unblinded token). The `scope` argument is
+   * accepted for API compatibility; the SDK binds tokens to the verifier
+   * scope discovered from the verifier's metadata.
    */
   async requestToken(scope: string = 'federation'): Promise<FreebirdToken> {
-    // Generate random input for unlinkability
-    const input = new Uint8Array(32);
-    crypto.getRandomValues(input);
-
-    // For now, use the simple token endpoint if available
-    // This is less private but works without client-side VOPRF
-    const response = await fetch(`${this.issuerUrl}/v1/token/simple`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scope,
-        input_b64: Buffer.from(input).toString('base64url'),
-      }),
-    });
-
-    if (!response.ok) {
-      // Fall back to OPRF endpoint with server-side blinding
-      return this.requestTokenViaOprf(scope);
-    }
-
-    const data = await response.json() as IssueResponse;
-    const metadata = await this.getMetadata();
-
-    return {
-      token: data.token,
-      issuerId: metadata.issuer_id,
-      exp: data.exp,
-      epoch: data.epoch,
-    };
+    const sdkToken = await this.sdk.issueToken();
+    return this.mapSdkToken(sdkToken);
   }
 
   /**
-   * Request token via full OPRF protocol
-   * Requires server to handle blinding (less private but functional)
+   * Map an SDK token into the Rendezvous FreebirdToken shape.
+   *
+   * The SDK token carries no exp/epoch, so we set sensible defaults:
+   * exp = now + 24h (Unix seconds), epoch = 0.
    */
-  private async requestTokenViaOprf(scope: string): Promise<FreebirdToken> {
-    // Generate random input
-    const input = new Uint8Array(32);
-    crypto.getRandomValues(input);
-    const inputB64 = Buffer.from(input).toString('base64url');
-
-    // Request server-side blinding and issuance
-    // This endpoint handles the full OPRF flow server-side
-    const response = await fetch(`${this.issuerUrl}/v1/oprf/issue-simple`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input_b64: inputB64,
-        scope,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Token issuance failed: ${response.status}`);
-    }
-
-    const data = await response.json() as IssueResponse & { finalized_token?: string };
-    const metadata = await this.getMetadata();
-
+  private mapSdkToken(sdkToken: SdkFreebirdToken): FreebirdToken {
     return {
-      token: data.finalized_token || data.token,
-      issuerId: metadata.issuer_id,
-      exp: data.exp,
-      epoch: data.epoch,
+      token: sdkToken.tokenValue,
+      issuerId: sdkToken.issuerId,
+      exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+      epoch: 0,
     };
   }
 
@@ -183,23 +124,11 @@ export class FreebirdClient {
    * Verify a token
    */
   async verifyToken(token: FreebirdToken): Promise<boolean> {
-    const response = await fetch(`${this.verifierUrl}/v1/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token_b64: token.token,
-        issuer_id: token.issuerId,
-        exp: token.exp,
-        epoch: token.epoch,
-      }),
-    });
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const data = await response.json() as VerifyResponse;
-    return data.ok;
+    const sdkToken: SdkFreebirdToken = {
+      tokenValue: token.token,
+      issuerId: token.issuerId,
+    };
+    return this.sdk.verifyToken(sdkToken);
   }
 
   /**
